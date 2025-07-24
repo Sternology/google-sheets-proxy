@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.2.5'; // Added debug logging to check HC1 date filtering
+            const VERSION = 'v2.2.6'; // Fixed infinite loop by removing debug logging from render process
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = (clientType) => {
@@ -316,12 +316,6 @@
                     
                     if (!periodStart || !periodEnd) return;
 
-                    // Debug logging for HC1 clients
-                    if (clientName.includes('HC-One')) {
-                        addLog(`Processing ${clientName} with period: ${config.period}`, 'info');
-                        addLog(`Date range parsed: ${periodStart.toDateString()} to ${periodEnd.toDateString()}`, 'info');
-                    }
-
                     const daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24)) + 1;
                     const daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)));
 
@@ -351,7 +345,6 @@
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
                         let clientFacebookSpend = 0;
-                        let matchedRows = 0;
                         data[facebookTabName].forEach(row => {
                             const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
@@ -362,20 +355,9 @@
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
                                 clientFacebookSpend += cost;
-                                matchedRows++;
-                                
-                                // Debug logging for HC1 Facebook data
-                                if (clientName.includes('HC-One') && matchedRows <= 5) {
-                                    addLog(`${clientName} FB: ${row.Date} - ${campaign} - £${cost}`, 'debug');
-                                }
                             }
                         });
                         facebookSpend = clientFacebookSpend;
-                        
-                        // Debug summary for HC1
-                        if (clientName.includes('HC-One')) {
-                            addLog(`${clientName} FB total: £${facebookSpend.toFixed(2)} from ${matchedRows} rows`, 'info');
-                        }
                     }
 
                     const total = googleSpend + facebookSpend;
