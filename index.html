@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.1.7'; // Fixed Apollo FB columns + preserved custom reporting periods
+            const VERSION = 'v2.1.8'; // Fixed HC1 campaign name with double space
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = (clientType) => {
@@ -122,7 +122,7 @@
                     skipTabs: true
                 },
                 'Care Always On - England/Wales': {
-                    campaigns: ['AL - Always on Care Search Campaign'],
+                    campaigns: ['AL -  Always on Care Search Campaign'], // Note: double space after "AL -"
                     budget: 1800,
                     period: getCurrentPeriod('standard'), // 1st to end of month
                     totalDays: getTotalDays('standard'),
