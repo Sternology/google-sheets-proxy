@@ -60,17 +60,17 @@
                     tabPrefix: 'Cygnet',
                     skipTabs: true
                 },
-                'HC-One Always On': {
-                    campaigns: ['AL -  Always on Care Search Campaign'],
+                'Care Always On - England/Wales': {
+                    campaigns: ['AL - Always on Care Search Campaign'],
                     budget: 1800,
-                    period: 'Jul 11 - Aug 10',
+                    period: 'Jul 1 - Jul 31',
                     totalDays: 31,
                     tabPrefix: 'HC1'
                 },
-                'HC-One Scotland': {
-                    campaigns: ['AL -  Scotland Always on Care Search Campaign'],
+                'Care Always On - Scotland': {
+                    campaigns: ['AL - Scotland Always on Care Search Campaign'],
                     budget: 1000,
-                    period: 'Jul 11 - Aug 10',
+                    period: 'Jul 1 - Jul 31',
                     totalDays: 31,
                     tabPrefix: 'HC1',
                     skipTabs: true
@@ -446,44 +446,163 @@
                             )
                         )
                     ),
-                    // Main Table would go here - simplified for space
+                    // Main Dashboard Content with Visual Gauges
                     React.createElement('div', { className: 'bg-white rounded-lg shadow-sm p-6' },
-                        React.createElement('h2', { className: 'text-xl font-bold mb-4' }, 'Client Performance Summary'),
+                        React.createElement('h2', { className: 'text-2xl font-bold mb-6 text-center' }, 'Budget Performance Dashboard'),
                         dataToUse.length > 0 ? 
-                            React.createElement('div', { className: 'space-y-4' },
-                                dataToUse.map(client =>
-                                    React.createElement('div', { 
+                            React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' },
+                                dataToUse.map(client => {
+                                    const usagePercent = Math.min(client.used, 100);
+                                    const remainingPercent = Math.max(0, 100 - usagePercent);
+                                    
+                                    // Determine gauge colors based on usage
+                                    const getGaugeColor = (usage, pace) => {
+                                        if (usage >= 90) return 'from-red-500 to-red-600';
+                                        if (usage >= 75) return 'from-orange-500 to-orange-600'; 
+                                        if (pace < 85) return 'from-blue-500 to-blue-600';
+                                        return 'from-green-500 to-green-600';
+                                    };
+                                    
+                                    const getBorderColor = (status) => {
+                                        if (status === 'HOT') return 'border-red-300 bg-red-50';
+                                        if (status === 'COLD') return 'border-blue-300 bg-blue-50';
+                                        return 'border-green-300 bg-green-50';
+                                    };
+                                    
+                                    return React.createElement('div', { 
                                         key: client.name,
-                                        className: 'border rounded-lg p-4'
+                                        className: `border-2 rounded-xl p-6 transition-all hover:shadow-lg ${getBorderColor(client.status)}`
                                     },
-                                        React.createElement('div', { className: 'flex justify-between items-center mb-2' },
-                                            React.createElement('h3', { className: 'font-bold text-lg' }, client.name),
+                                        // Client Name and Status
+                                        React.createElement('div', { className: 'flex justify-between items-start mb-4' },
+                                            React.createElement('h3', { className: 'font-bold text-lg text-gray-900' }, client.name),
                                             React.createElement('span', { 
-                                                className: `px-3 py-1 rounded-full text-sm ${getStatusColor(client.status)}`
-                                            }, client.status)
+                                                className: `px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(client.status)}`
+                                            }, 
+                                                client.status === 'ON TRACK' ? '✅ ON TRACK' : 
+                                                client.status === 'HOT' ? '🔥 HOT' : '🧊 COLD'
+                                            )
                                         ),
-                                        React.createElement('div', { className: 'grid grid-cols-2 md:grid-cols-4 gap-4 text-sm' },
-                                            React.createElement('div', null,
-                                                React.createElement('div', { className: 'text-gray-600' }, 'Total Spend'),
-                                                React.createElement('div', { className: 'font-bold text-lg' }, '£', client.total.toFixed(0))
+                                        
+                                        // Circular Budget Gauge
+                                        React.createElement('div', { className: 'flex justify-center mb-6' },
+                                            React.createElement('div', { className: 'relative w-32 h-32' },
+                                                // Background circle
+                                                React.createElement('svg', { className: 'w-32 h-32 transform -rotate-90' },
+                                                    React.createElement('circle', {
+                                                        cx: '64',
+                                                        cy: '64', 
+                                                        r: '56',
+                                                        stroke: '#e5e7eb',
+                                                        strokeWidth: '8',
+                                                        fill: 'transparent'
+                                                    }),
+                                                    // Progress circle
+                                                    React.createElement('circle', {
+                                                        cx: '64',
+                                                        cy: '64',
+                                                        r: '56', 
+                                                        stroke: 'url(#gradient-' + client.name.replace(/[^a-zA-Z0-9]/g, '') + ')',
+                                                        strokeWidth: '8',
+                                                        fill: 'transparent',
+                                                        strokeDasharray: '351.86',
+                                                        strokeDashoffset: 351.86 * (1 - usagePercent / 100),
+                                                        strokeLinecap: 'round',
+                                                        className: 'transition-all duration-1000 ease-out'
+                                                    }),
+                                                    // Gradient definition
+                                                    React.createElement('defs', null,
+                                                        React.createElement('linearGradient', {
+                                                            id: 'gradient-' + client.name.replace(/[^a-zA-Z0-9]/g, ''),
+                                                            x1: '0%', y1: '0%', x2: '100%', y2: '0%'
+                                                        },
+                                                            React.createElement('stop', { offset: '0%', stopColor: getGaugeColor(client.used, client.pace).split(' ')[0].replace('from-', '') }),
+                                                            React.createElement('stop', { offset: '100%', stopColor: getGaugeColor(client.used, client.pace).split(' ')[1].replace('to-', '') })
+                                                        )
+                                                    )
+                                                ),
+                                                // Center text
+                                                React.createElement('div', { className: 'absolute inset-0 flex flex-col items-center justify-center' },
+                                                    React.createElement('div', { className: `text-2xl font-bold ${getUsageColor(client.used)}` }, 
+                                                        client.used.toFixed(0), '%'
+                                                    ),
+                                                    React.createElement('div', { className: 'text-xs text-gray-500' }, 'Used')
+                                                )
+                                            )
+                                        ),
+                                        
+                                        // Financial Details
+                                        React.createElement('div', { className: 'space-y-3' },
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Total Spend'),
+                                                React.createElement('span', { className: 'font-bold text-lg' }, '£', client.total.toFixed(0))
                                             ),
-                                            React.createElement('div', null,
-                                                React.createElement('div', { className: 'text-gray-600' }, 'Budget'),
-                                                React.createElement('div', { className: 'font-bold' }, '£', client.budget)
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Budget'),
+                                                React.createElement('span', { className: 'font-semibold' }, '£', client.budget)
                                             ),
-                                            React.createElement('div', null,
-                                                React.createElement('div', { className: 'text-gray-600' }, 'Usage'),
-                                                React.createElement('div', { className: `font-bold ${getUsageColor(client.used)}` }, client.used.toFixed(1), '%')
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Remaining'),
+                                                React.createElement('span', { className: `font-semibold ${client.remaining > 0 ? 'text-green-600' : 'text-red-600'}` }, 
+                                                    '£', client.remaining.toFixed(0)
+                                                )
                                             ),
-                                            React.createElement('div', null,
-                                                React.createElement('div', { className: 'text-gray-600' }, 'Days Left'),
-                                                React.createElement('div', { className: getDaysLeftColor(client.daysLeft) }, client.daysLeft)
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Daily Average'),
+                                                React.createElement('span', { className: 'font-semibold' }, '£', client.currentDaily.toFixed(0))
+                                            )
+                                        ),
+                                        
+                                        // Progress Bar
+                                        React.createElement('div', { className: 'mt-4' },
+                                            React.createElement('div', { className: 'flex justify-between text-xs text-gray-500 mb-1' },
+                                                React.createElement('span', null, 'Days Progress'),
+                                                React.createElement('span', null, client.daysElapsed, ' / ', client.totalDays, ' days')
+                                            ),
+                                            React.createElement('div', { className: 'w-full bg-gray-200 rounded-full h-2' },
+                                                React.createElement('div', {
+                                                    className: 'bg-blue-500 h-2 rounded-full transition-all duration-1000',
+                                                    style: { width: (client.daysElapsed / client.totalDays * 100) + '%' }
+                                                })
+                                            )
+                                        ),
+                                        
+                                        // Days Left Alert
+                                        client.daysLeft <= 7 && React.createElement('div', { 
+                                            className: `mt-4 p-3 rounded-lg text-center ${
+                                                client.daysLeft <= 2 ? 'bg-red-100 text-red-800' :
+                                                client.daysLeft <= 5 ? 'bg-orange-100 text-orange-800' :
+                                                'bg-yellow-100 text-yellow-800'
+                                            }`
+                                        },
+                                            React.createElement('div', { className: 'font-bold' }, 
+                                                client.daysLeft <= 1 ? '🚨 ENDS TODAY!' :
+                                                client.daysLeft === 2 ? '⚠️ ENDS TOMORROW!' :
+                                                client.daysLeft + ' days left'
+                                            ),
+                                            React.createElement('div', { className: 'text-sm mt-1' }, 
+                                                'Need £', client.requiredDaily.toFixed(0), '/day to finish on budget'
+                                            )
+                                        ),
+                                        
+                                        // Pace Indicator
+                                        React.createElement('div', { className: 'mt-4 text-center' },
+                                            React.createElement('div', { className: `text-sm font-semibold ${getPaceColor(client.pace)}` },
+                                                'Pace: ', client.pace.toFixed(0), '%'
+                                            ),
+                                            React.createElement('div', { className: 'text-xs text-gray-500' },
+                                                client.pace > 115 ? 'Spending too fast' :
+                                                client.pace < 85 ? 'Spending too slow' :
+                                                'Perfect pace'
                                             )
                                         )
-                                    )
-                                )
+                                    );
+                                })
                             ) :
-                            React.createElement('p', { className: 'text-gray-500' }, 'Loading data...')
+                            React.createElement('div', { className: 'text-center py-12' },
+                                React.createElement('div', { className: 'animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4' }),
+                                React.createElement('p', { className: 'text-gray-500 text-lg' }, 'Loading budget data...')
+                            )
                     )
                 )
             );
