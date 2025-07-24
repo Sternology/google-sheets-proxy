@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.6.8'; // Fixed Facebook budget conversion: pennies to pounds (/100)
+            const VERSION = 'v2.7.0'; // Fixed pace calculation: now based on daily budget vs required daily spend
 
             // Get current reporting period for each client (dynamic) - moved outside component
             const getCurrentPeriod = useCallback((clientType) => {
@@ -201,8 +201,8 @@
                     let clientScore = 100;
                     
                     // Pace scoring (40% weight)
-                    if (client.pace < 70 || client.pace > 130) clientScore -= 40;
-                    else if (client.pace < 85 || client.pace > 115) clientScore -= 20;
+                    if (client.pace < 80 || client.pace > 120) clientScore -= 40;
+                    else if (client.pace < 90 || client.pace > 110) clientScore -= 20;
                     else if (client.pace < 95 || client.pace > 105) clientScore -= 10;
                     
                     // Budget usage scoring (30% weight)
@@ -538,16 +538,13 @@
                     const total = googleSpend + facebookSpend;
                     const used = (total / config.budget) * 100;
                     const remaining = config.budget - total;
-                    const expectedSpend = config.budget * (daysElapsed / config.totalDays);
-                    const currentDaily = daysElapsed > 0 ? total / daysElapsed : 0; // Overall average
-                    const variance = total - expectedSpend;
-                    const pace = expectedSpend > 0 ? (total / expectedSpend) * 100 : 100;
+                    const currentDaily = daysElapsed > 0 ? total / daysElapsed : 0; // Historical daily average
                     const requiredDaily = daysLeft > 0 ? remaining / daysLeft : 0;
 
                     // Calculate current daily budget total
                     const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
 
-                    // Calculate projected spend based on current daily budgets vs current pace
+                    // Calculate projected spend based on current daily budget
                     const projectedSpendByBudget = total + (currentDailyBudget * daysLeft);
                     const projectedSpendByPace = total + (currentDaily * daysLeft);
                     
@@ -556,12 +553,18 @@
                     const projectedOverage = projectedSpend - config.budget;
                     const projectedUsage = (projectedSpend / config.budget) * 100;
 
+                    // Calculate pace based on daily budget vs required daily to stay on budget
+                    // Pace = (Current Daily Budget / Required Daily to Stay on Budget) * 100
+                    // If pace > 100%, we're spending too fast and will go over budget
+                    // If pace < 100%, we're spending too slow and will be under budget
+                    const pace = requiredDaily > 0 ? (currentDailyBudget / requiredDaily) * 100 : 100;
+
                     // Create sparkline data
                     const sparklineData = createSparklineData(dailySpend, config.totalDays);
 
                     let status = 'ON TRACK';
-                    if (pace < 85) status = 'COLD';
-                    else if (pace > 115) status = 'HOT';
+                    if (pace < 90) status = 'COLD';
+                    else if (pace > 110) status = 'HOT';
 
                     processedClients.push({
                         name: clientName,
@@ -577,7 +580,7 @@
                         remaining: remaining,
                         googlePercent: total > 0 ? (googleSpend / total) * 100 : 0,
                         facebookPercent: total > 0 ? (facebookSpend / total) * 100 : 0,
-                        expectedSpend: expectedSpend,
+                        expectedSpend: config.budget * (daysElapsed / config.totalDays), // Keep for reference
                         currentDaily: currentDaily,
                         threeDayAverage: threeDayAverage, // 3-day rolling average
                         weeklyTrend: weeklyTrend, // Weekly trend indicator
@@ -586,7 +589,7 @@
                         projectedUsage: projectedUsage, // Projected budget usage %
                         sparklineData: sparklineData, // Cost per day trend data
                         dailySpend: dailySpend, // Daily spend breakdown
-                        variance: variance,
+                        variance: projectedOverage, // Use projected overage as variance
                         pace: pace,
                         requiredDaily: requiredDaily,
                         status: status,
@@ -665,8 +668,8 @@
             };
 
             const getPaceColor = (pace) => {
-                if (pace < 85) return 'text-blue-600 font-bold';
-                if (pace > 115) return 'text-red-600 font-bold';
+                if (pace < 90) return 'text-blue-600 font-bold';
+                if (pace > 110) return 'text-red-600 font-bold';
                 return 'text-green-600 font-bold';
             };
 
@@ -900,8 +903,8 @@
                                     const pacePosition = pacePercent / 200; // 0 to 1
                                     
                                     const getPaceNeedleColor = (pace) => {
-                                        if (pace < 85) return '#3B82F6'; // Blue
-                                        if (pace > 115) return '#EF4444'; // Red
+                                        if (pace < 90) return '#3B82F6'; // Blue
+                                        if (pace > 110) return '#EF4444'; // Red
                                         return '#10B981'; // Green
                                     };
                                     
@@ -1156,8 +1159,8 @@
                                                 'Pace: ', client.pace.toFixed(0), '%'
                                             ),
                                             React.createElement('div', { className: 'text-xs text-gray-500' },
-                                                client.pace > 115 ? 'Spending too fast' :
-                                                client.pace < 85 ? 'Spending too slow' :
+                                                pace > 110 ? 'Spending too fast' :
+                                                pace < 90 ? 'Spending too slow' :
                                                 'Perfect pace'
                                             )
                                         )
