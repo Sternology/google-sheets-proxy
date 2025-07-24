@@ -35,44 +35,104 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.1.5'; // Fixed infinite re-render loop
+            const VERSION = 'v2.1.7'; // Fixed Apollo FB columns + preserved custom reporting periods
+
+            // Get current reporting period for each client (dynamic)
+            const getCurrentPeriod = (clientType) => {
+                const today = new Date();
+                
+                if (clientType === 'apollo') {
+                    // Apollo: 26th to 25th cycle
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const day = today.getDate();
+                    
+                    let startMonth, startYear, endMonth, endYear;
+                    
+                    if (day >= 26) {
+                        // We're in the new period (26th onwards)
+                        startMonth = currentMonth;
+                        startYear = currentYear;
+                        endMonth = currentMonth + 1;
+                        endYear = currentYear;
+                    } else {
+                        // We're still in the previous period (before 26th)
+                        startMonth = currentMonth - 1;
+                        startYear = currentYear;
+                        endMonth = currentMonth;
+                        endYear = currentYear;
+                    }
+                    
+                    // Handle year rollover
+                    if (startMonth < 0) {
+                        startMonth = 11;
+                        startYear--;
+                    }
+                    if (endMonth > 11) {
+                        endMonth = 0;
+                        endYear++;
+                    }
+                    
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
+                } else {
+                    // Others: 1st to end of month cycle
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const currentMonthName = monthNames[currentMonth];
+                    const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+                    
+                    return `${currentMonthName} 1 - ${currentMonthName} ${lastDay}`;
+                }
+            };
+
+            // Get total days for the period
+            const getTotalDays = (clientType) => {
+                if (clientType === 'apollo') {
+                    return 30; // 26th to 25th = 30 days
+                } else {
+                    const today = new Date();
+                    return new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                }
+            };
 
             // Client and campaign configuration
             const clientConfig = {
                 'Apollo': {
                     campaigns: ['*'],
                     budget: 1221,
-                    period: 'Jun 26 - Jul 25',
-                    totalDays: 30,
+                    period: getCurrentPeriod('apollo'), // 26th to 25th cycle
+                    totalDays: getTotalDays('apollo'),
                     note: 'Budget increased to £60/day each platform - showing improvement!'
                 },
                 'Cygnet Care': {
                     campaigns: ['Care and Support Always On Performance Max'],
                     budget: 800,
-                    period: 'Jul 1 - Jul 31',
-                    totalDays: 31,
+                    period: getCurrentPeriod('standard'), // 1st to end of month
+                    totalDays: getTotalDays('standard'),
                     tabPrefix: 'Cygnet'
                 },
                 'Cygnet Nursing': {
                     campaigns: ['Nursing always on Performance Max', 'Always On Nursing Search'],
                     budget: 800,
-                    period: 'Jul 1 - Jul 31',
-                    totalDays: 31,
+                    period: getCurrentPeriod('standard'), // 1st to end of month
+                    totalDays: getTotalDays('standard'),
                     tabPrefix: 'Cygnet',
                     skipTabs: true
                 },
                 'Care Always On - England/Wales': {
                     campaigns: ['AL - Always on Care Search Campaign'],
                     budget: 1800,
-                    period: 'Jul 1 - Jul 31',
-                    totalDays: 31,
+                    period: getCurrentPeriod('standard'), // 1st to end of month
+                    totalDays: getTotalDays('standard'),
                     tabPrefix: 'HC1'
                 },
                 'Care Always On - Scotland': {
                     campaigns: ['AL - Scotland Always on Care Search Campaign'],
                     budget: 1000,
-                    period: 'Jul 1 - Jul 31',
-                    totalDays: 31,
+                    period: getCurrentPeriod('standard'), // 1st to end of month
+                    totalDays: getTotalDays('standard'),
                     tabPrefix: 'HC1',
                     skipTabs: true
                 }
@@ -159,7 +219,18 @@
                                     const tabData = rows.map(row => {
                                         const rowData = {};
                                         headers.forEach((header, index) => {
-                                            rowData[header] = row[index] || '';
+                                            // Map Apollo FB column names to standard format
+                                            if (tabName === 'Apollo FB') {
+                                                if (header === 'Campaign name') {
+                                                    rowData['Campaign'] = row[index] || '';
+                                                } else if (header === 'Amount spent (GBP)') {
+                                                    rowData['Cost'] = row[index] || '';
+                                                } else {
+                                                    rowData[header] = row[index] || '';
+                                                }
+                                            } else {
+                                                rowData[header] = row[index] || '';
+                                            }
                                         });
                                         return rowData;
                                     });
