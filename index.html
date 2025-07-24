@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.5.1'; // Fixed infinite re-render and React 18 compatibility
+            const VERSION = 'v2.5.2'; // Fixed infinite re-render loop completely
 
             // Get current reporting period for each client (dynamic) - moved outside component
             const getCurrentPeriod = useCallback((clientType) => {
@@ -473,7 +473,6 @@
 
                         // Sum up all campaign daily budgets for Google
                         googleDailyBudget = Array.from(budgetMap.values()).reduce((sum, budget) => sum + budget, 0);
-                        addLog(`Google daily budget for ${clientName}: £${googleDailyBudget}`, 'info');
                     }
 
                     // Process Facebook data
@@ -509,7 +508,6 @@
 
                         // Sum up all adset daily budgets for Facebook campaigns
                         facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
-                        addLog(`Facebook daily budget for ${clientName}: £${facebookDailyBudget}`, 'info');
                     }
 
                     // Calculate 3-day rolling average
@@ -589,14 +587,25 @@
                 });
 
                 return processedClients;
-            }, [clientConfig, addLog]);
+            }, [clientConfig]);
 
             // Load data on mount
             useEffect(() => {
                 loadData();
             }, []);
 
-            const dataToUse = Object.keys(rawData).length > 0 ? processRawData(rawData) : [];
+            // Log daily budgets when data changes
+            useEffect(() => {
+                if (dataToUse.length > 0) {
+                    dataToUse.forEach(client => {
+                        addLog(`${client.name} - Google: £${client.googleDailyBudget}, Facebook: £${client.facebookDailyBudget}`, 'info');
+                    });
+                }
+            }, [dataToUse, addLog]);
+
+            const dataToUse = useMemo(() => {
+                return Object.keys(rawData).length > 0 ? processRawData(rawData) : [];
+            }, [rawData, processRawData]);
             
             // Calculate dashboard-level metrics
             const budgetHealth = calculateBudgetHealthScore(dataToUse);
