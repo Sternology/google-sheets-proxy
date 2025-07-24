@@ -464,6 +464,11 @@
                             const cost = parseFloat(row.Cost) || 0;
                             const dailyBudget = parseFloat(row.DailyBudget) || 0;
 
+                            // Debug raw data for Apollo
+                            if (clientName === 'Apollo' && dailyBudget > 0) {
+                                console.log(`Raw Apollo data: Cost=${row.Cost} (${typeof row.Cost}), Budget=${row.DailyBudget} (${typeof row.DailyBudget}), Parsed=${dailyBudget}`);
+                            }
+
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
 
