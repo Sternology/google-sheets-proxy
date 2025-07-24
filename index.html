@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.1.2'; // Hardcoded expected tabs list
+            const VERSION = 'v2.1.3'; // Fixed Apollo FB and England/Wales campaign matching
 
             // Client and campaign configuration
             const clientConfig = {
@@ -123,22 +123,8 @@
 
                 try {
                     const allData = {};
-                    const expectedTabs = [];
-                    
-                    // Build list of expected tabs
-                    const tabsAdded = new Set();
-                    Object.keys(clientConfig).forEach(client => {
-                        const config = clientConfig[client];
-                        if (config.skipTabs) return;
-                        
-                        const tabPrefix = config.tabPrefix || client;
-                        const googleTab = `${tabPrefix} Google`;
-                        
-                        if (!tabsAdded.has(googleTab)) {
-                            expectedTabs.push(googleTab);
-                            tabsAdded.add(googleTab);
-                        }
-                    });
+                    // Hardcoded expected tabs to ensure all are loaded
+                    const expectedTabs = ['Apollo Google', 'Apollo FB', 'Cygnet Google', 'HC1 Google'];
 
                     addLog(`Expected tabs: ${expectedTabs.join(', ')}`, 'info');
 
@@ -155,7 +141,7 @@
                             
                             const response = await fetch(url);
                             
-                            addLog(`Response status for ${tabName}: ${response.status} ${response.statusText}`, 'info');
+                            addLog(`Response status for ${tabName}: ${response.status}`, response.ok ? 'success' : 'error');
                             
                             if (response.ok) {
                                 const data = await response.json();
@@ -226,21 +212,54 @@
                     let googleSpend = 0;
                     let facebookSpend = 0;
 
+                    addLog(`Processing ${clientName} with tabPrefix: ${tabPrefix}`, 'debug');
+
                     // Process Google data
                     const googleTabName = `${tabPrefix} Google`;
                     if (data[googleTabName]) {
+                        addLog(`Processing Google data for ${clientName} from ${googleTabName}`, 'debug');
+                        let clientGoogleSpend = 0;
                         data[googleTabName].forEach(row => {
                             const rowDate = new Date(row.Date);
-                            const campaign = row.Campaign;
+                            const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
 
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign.includes(c));
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
-                                googleSpend += cost;
+                                clientGoogleSpend += cost;
+                                addLog(`Matched ${campaign}: £${cost} for ${clientName}`, 'debug');
                             }
                         });
+                        googleSpend = clientGoogleSpend;
+                        addLog(`Total Google spend for ${clientName}: £${googleSpend.toFixed(2)}`, 'info');
+                    } else {
+                        addLog(`No Google data found for ${clientName} (expected: ${googleTabName})`, 'warning');
+                    }
+
+                    // Process Facebook data  
+                    const facebookTabName = `${tabPrefix} FB`;
+                    if (data[facebookTabName]) {
+                        addLog(`Processing Facebook data for ${clientName} from ${facebookTabName}`, 'debug');
+                        let clientFacebookSpend = 0;
+                        data[facebookTabName].forEach(row => {
+                            const rowDate = new Date(row.Date);
+                            const campaign = row.Campaign || '';
+                            const cost = parseFloat(row.Cost) || 0;
+
+                            const matchesCampaign = config.campaigns.includes('*') || 
+                                                 config.campaigns.some(c => campaign.includes(c));
+
+                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                clientFacebookSpend += cost;
+                                addLog(`Matched FB ${campaign}: £${cost} for ${clientName}`, 'debug');
+                            }
+                        });
+                        facebookSpend = clientFacebookSpend;
+                        addLog(`Total Facebook spend for ${clientName}: £${facebookSpend.toFixed(2)}`, 'info');
+                    } else {
+                        addLog(`No Facebook data found for ${clientName} (expected: ${facebookTabName})`, 'debug');
                     }
 
                     const total = googleSpend + facebookSpend;
@@ -255,6 +274,8 @@
                     let status = 'ON TRACK';
                     if (pace < 85) status = 'COLD';
                     else if (pace > 115) status = 'HOT';
+
+                    addLog(`Final totals for ${clientName}: £${total.toFixed(2)} (${used.toFixed(1)}% of budget)`, 'info');
 
                     processedClients.push({
                         name: clientName,
@@ -437,12 +458,13 @@
                         logs.length > 0 && React.createElement('div', { className: 'mt-4' },
                             React.createElement('h4', { className: 'text-sm font-medium text-gray-800 mb-2' }, 'System Logs:'),
                             React.createElement('div', { className: 'bg-gray-900 text-green-400 p-3 rounded max-h-32 overflow-y-auto font-mono text-xs' },
-                                logs.slice(-10).map((log, index) =>
+                                logs.slice(-15).map((log, index) =>
                                     React.createElement('div', {
                                         key: index,
                                         className: log.type === 'error' ? 'text-red-400' : 
                                                  log.type === 'success' ? 'text-green-400' : 
-                                                 log.type === 'warning' ? 'text-yellow-400' : 'text-blue-400'
+                                                 log.type === 'warning' ? 'text-yellow-400' : 
+                                                 log.type === 'debug' ? 'text-gray-400' : 'text-blue-400'
                                     }, `[${log.timestamp}] ${log.message}`)
                                 )
                             )
@@ -552,6 +574,17 @@
                                             React.createElement('div', { className: 'flex justify-between items-center' },
                                                 React.createElement('span', { className: 'text-sm text-gray-600' }, 'Daily Average'),
                                                 React.createElement('span', { className: 'font-semibold' }, '£', client.currentDaily.toFixed(0))
+                                            ),
+                                            // Platform Split (when enabled)
+                                            showPlatformSplit && (client.google > 0 || client.facebook > 0) && React.createElement('div', { className: 'border-t pt-3 mt-3' },
+                                                React.createElement('div', { className: 'flex justify-between items-center mb-2' },
+                                                    React.createElement('span', { className: 'text-sm text-gray-600' }, 'Google'),
+                                                    React.createElement('span', { className: 'font-semibold text-orange-600' }, '£', client.google.toFixed(0), ' (', client.googlePercent.toFixed(0), '%)')
+                                                ),
+                                                React.createElement('div', { className: 'flex justify-between items-center' },
+                                                    React.createElement('span', { className: 'text-sm text-gray-600' }, 'Meta/FB'),
+                                                    React.createElement('span', { className: 'font-semibold text-purple-600' }, '£', client.facebook.toFixed(0), ' (', client.facebookPercent.toFixed(0), '%)')
+                                                )
                                             )
                                         ),
                                         
