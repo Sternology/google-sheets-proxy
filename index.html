@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.6.7'; // Separated Google vs Facebook data debugging completely
+            const VERSION = 'v2.6.8'; // Fixed Facebook budget conversion: pennies to pounds (/100)
 
             // Get current reporting period for each client (dynamic) - moved outside component
             const getCurrentPeriod = useCallback((clientType) => {
@@ -390,17 +390,6 @@
                                     allData[tabName] = tabData;
                                     successCount++;
                                     addLog(`✅ Loaded ${tabData.length} rows from ${tabName}`, 'success');
-                                    
-                                    // Debug Facebook data structure for Apollo
-                                    if (tabName === 'Apollo FB') {
-                                        const sampleRow = tabData[0];
-                                        console.log('Apollo FB Sample Row:', sampleRow);
-                                        console.log('Apollo FB Budget Values Sample:', tabData.slice(0, 3).map(row => ({
-                                            adset: row.AdsetName,
-                                            budget: row.DailyBudget,
-                                            cost: row.Cost
-                                        })));
-                                    }
                                 } else {
                                     errorCount++;
                                     addLog(`⚠️ No data found in tab: ${tabName}`, 'warning');
@@ -464,11 +453,6 @@
                             const cost = parseFloat(row.Cost) || 0;
                             const dailyBudget = parseFloat(row.DailyBudget) || 0;
 
-                            // Debug raw data for Facebook ONLY
-                            if (clientName === 'Apollo' && tabName === 'Apollo FB' && dailyBudget > 0) {
-                                console.log(`🔍 FACEBOOK Raw Apollo data: Cost=${row.Cost}, FB_Budget=${row.DailyBudget} (${typeof row.DailyBudget}), Parsed=${dailyBudget}, Adset=${adsetName}`);
-                            }
-
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
 
@@ -501,7 +485,10 @@
                             const campaign = row.Campaign || '';
                             const adsetName = row.AdsetName || '';
                             const cost = parseFloat(row.Cost) || 0;
-                            const dailyBudget = parseFloat(row.DailyBudget) || 0;
+                            const rawBudget = parseFloat(row.DailyBudget) || 0;
+                            
+                            // Convert Facebook budget from pennies to pounds (6012.00 -> £60.12)
+                            const dailyBudget = rawBudget > 0 ? rawBudget / 100 : 0;
 
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
@@ -514,16 +501,26 @@
                                 if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
                                 dailySpend[dateKey] += cost;
 
-                                // Track daily budget per adset (use latest value)
+                                // Track daily budget per adset (use latest value) - now in pounds
                                 if (dailyBudget > 0 && adsetName) {
                                     const adsetKey = `${campaign}_${adsetName}`;
                                     adsetBudgetMap.set(adsetKey, dailyBudget);
+                                    
+                                    // Debug logging for Apollo Facebook budget conversion
+                                    if (clientName === 'Apollo') {
+                                        console.log(`✅ FACEBOOK ADSET: ${adsetName} - Raw: ${rawBudget} -> Converted: £${dailyBudget.toFixed(2)}`);
+                                    }
                                 }
                             }
                         });
 
-                        // Sum up all adset daily budgets for Facebook campaigns
+                        // Sum up all adset daily budgets for Facebook campaigns (now in pounds)
                         facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                        
+                        // Debug logging for total Facebook budget
+                        if (clientName === 'Apollo' && facebookDailyBudget > 0) {
+                            console.log(`✅ FACEBOOK TOTAL for Apollo: ${Array.from(adsetBudgetMap.values()).length} adsets = £${facebookDailyBudget.toFixed(2)}/day`);
+                        }
                     }
 
                     // Calculate 3-day rolling average
