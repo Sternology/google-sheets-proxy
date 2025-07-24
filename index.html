@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.1.8'; // Fixed HC1 campaign name with double space
+            const VERSION = 'v2.2.0'; // Updated Cygnet campaigns to match actual FB campaign names
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = (clientType) => {
@@ -107,14 +107,14 @@
                     note: 'Budget increased to £60/day each platform - showing improvement!'
                 },
                 'Cygnet Care': {
-                    campaigns: ['Care and Support Always On Performance Max'],
+                    campaigns: ['Care and Support Always On Performance Max', 'Care and Support Always On - Conversions 2025', 'Care and Support Always On - Traffic - 2024'],
                     budget: 800,
                     period: getCurrentPeriod('standard'), // 1st to end of month
                     totalDays: getTotalDays('standard'),
                     tabPrefix: 'Cygnet'
                 },
                 'Cygnet Nursing': {
-                    campaigns: ['Nursing always on Performance Max', 'Always On Nursing Search'],
+                    campaigns: ['Nursing always on Performance Max', 'Always On Nursing Search', 'Nursing Always on April 2024'],
                     budget: 800,
                     period: getCurrentPeriod('standard'), // 1st to end of month
                     totalDays: getTotalDays('standard'),
@@ -188,7 +188,7 @@
                 try {
                     const allData = {};
                     // Hardcoded expected tabs to ensure all are loaded
-                    const expectedTabs = ['Apollo Google', 'Apollo FB', 'Cygnet Google', 'HC1 Google'];
+                    const expectedTabs = ['Apollo Google', 'Apollo FB', 'Cygnet Google', 'Cygnet FB', 'HC1 Google'];
 
                     addLog(`Expected tabs: ${expectedTabs.join(', ')}`, 'info');
 
@@ -219,8 +219,8 @@
                                     const tabData = rows.map(row => {
                                         const rowData = {};
                                         headers.forEach((header, index) => {
-                                            // Map Apollo FB column names to standard format
-                                            if (tabName === 'Apollo FB') {
+                                            // Map Facebook tab column names to standard format
+                                            if (tabName === 'Apollo FB' || tabName === 'Cygnet FB') {
                                                 if (header === 'Campaign name') {
                                                     rowData['Campaign'] = row[index] || '';
                                                 } else if (header === 'Amount spent (GBP)') {
