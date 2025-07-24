@@ -390,6 +390,17 @@
                                     allData[tabName] = tabData;
                                     successCount++;
                                     addLog(`✅ Loaded ${tabData.length} rows from ${tabName}`, 'success');
+                                    
+                                    // Debug Facebook data structure for Apollo
+                                    if (tabName === 'Apollo FB') {
+                                        const sampleRow = tabData[0];
+                                        console.log('Apollo FB Sample Row:', sampleRow);
+                                        console.log('Apollo FB Budget Values Sample:', tabData.slice(0, 3).map(row => ({
+                                            adset: row.AdsetName,
+                                            budget: row.DailyBudget,
+                                            cost: row.Cost
+                                        })));
+                                    }
                                 } else {
                                     errorCount++;
                                     addLog(`⚠️ No data found in tab: ${tabName}`, 'warning');
@@ -594,11 +605,16 @@
                 loadData();
             }, []);
 
-            // Log daily budgets when data changes
+            // Log daily budgets when data changes (with debugging)
             useEffect(() => {
                 if (dataToUse.length > 0) {
                     dataToUse.forEach(client => {
                         addLog(`${client.name} - Google: £${client.googleDailyBudget}, Facebook: £${client.facebookDailyBudget} (Total: £${client.currentDailyBudget})`, 'info');
+                        
+                        // Extra debugging for clients with high Facebook budgets
+                        if (client.facebookDailyBudget > 100) {
+                            console.warn(`⚠️ ${client.name} has unusually high Facebook budget: £${client.facebookDailyBudget}/day`);
+                        }
                     });
                 }
             }, [dataToUse, addLog]);
