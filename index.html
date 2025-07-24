@@ -19,7 +19,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect } = React;
+        const { useState, useMemo, useEffect, useCallback } = React;
 
         const ClientBudgetTable = () => {
             const [sortBy, setSortBy] = useState('name');
@@ -35,10 +35,10 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.5.0'; // Updated version with daily budget support
+            const VERSION = 'v2.5.1'; // Fixed infinite re-render and React 18 compatibility
 
-            // Get current reporting period for each client (dynamic)
-            const getCurrentPeriod = (clientType) => {
+            // Get current reporting period for each client (dynamic) - moved outside component
+            const getCurrentPeriod = useCallback((clientType) => {
                 const today = new Date();
                 
                 if (clientType === 'apollo') {
@@ -119,10 +119,10 @@
                     
                     return `${currentMonthName} 1 - ${currentMonthName} ${lastDay}`;
                 }
-            };
+            }, []);
 
             // Get total days for the period
-            const getTotalDays = (clientType) => {
+            const getTotalDays = useCallback((clientType) => {
                 if (clientType === 'apollo') {
                     return 30; // 26th to 25th = 30 days
                 } else if (clientType === 'hc1') {
@@ -131,10 +131,10 @@
                     const today = new Date();
                     return new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
                 }
-            };
+            }, []);
 
-            // Client and campaign configuration
-            const clientConfig = {
+            // Client and campaign configuration - moved to useMemo to prevent re-creation
+            const clientConfig = useMemo(() => ({
                 'Apollo': {
                     campaigns: ['*'],
                     budget: 1221,
@@ -179,18 +179,18 @@
                     tabPrefix: 'HC1',
                     skipTabs: true
                 }
-            };
+            }), [getCurrentPeriod, getTotalDays]);
 
             // Utility functions
-            const addLog = (message, type = 'info') => {
+            const addLog = useCallback((message, type = 'info') => {
                 const timestamp = new Date().toLocaleTimeString();
                 setLogs(prev => [...prev, { message, type, timestamp }]);
                 console.log(`[${timestamp}] ${message}`);
-            };
+            }, []);
 
-            const clearLogs = () => {
+            const clearLogs = useCallback(() => {
                 setLogs([]);
-            };
+            }, []);
 
             // Calculate overall budget health score
             const calculateBudgetHealthScore = (clients) => {
@@ -422,7 +422,7 @@
             };
 
             // Process raw data into client metrics
-            const processRawData = (data) => {
+            const processRawData = useCallback((data) => {
                 const today = new Date();
                 const processedClients = [];
 
@@ -589,7 +589,7 @@
                 });
 
                 return processedClients;
-            };
+            }, [clientConfig, addLog]);
 
             // Load data on mount
             useEffect(() => {
@@ -1150,7 +1150,8 @@
             );
         };
 
-        ReactDOM.render(React.createElement(ClientBudgetTable), document.getElementById('root'));
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(ClientBudgetTable));
     </script>
 </body>
 </html>
