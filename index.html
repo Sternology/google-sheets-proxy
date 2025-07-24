@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.6.5'; // FIXED: Facebook budget already in pounds, removed incorrect division by 100
+            const VERSION = 'v2.6.7'; // Separated Google vs Facebook data debugging completely
 
             // Get current reporting period for each client (dynamic) - moved outside component
             const getCurrentPeriod = useCallback((clientType) => {
@@ -464,9 +464,9 @@
                             const cost = parseFloat(row.Cost) || 0;
                             const dailyBudget = parseFloat(row.DailyBudget) || 0;
 
-                            // Debug raw data for Apollo
-                            if (clientName === 'Apollo' && dailyBudget > 0) {
-                                console.log(`Raw Apollo data: Cost=${row.Cost} (${typeof row.Cost}), Budget=${row.DailyBudget} (${typeof row.DailyBudget}), Parsed=${dailyBudget}`);
+                            // Debug raw data for Facebook ONLY
+                            if (clientName === 'Apollo' && tabName === 'Apollo FB' && dailyBudget > 0) {
+                                console.log(`🔍 FACEBOOK Raw Apollo data: Cost=${row.Cost}, FB_Budget=${row.DailyBudget} (${typeof row.DailyBudget}), Parsed=${dailyBudget}, Adset=${adsetName}`);
                             }
 
                             const matchesCampaign = config.campaigns.includes('*') || 
