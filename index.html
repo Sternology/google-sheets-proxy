@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.5.2'; // Fixed infinite re-render loop completely
+            const VERSION = 'v2.5.3'; // Fixed Facebook budget calculation to only include active adsets
 
             // Get current reporting period for each client (dynamic) - moved outside component
             const getCurrentPeriod = useCallback((clientType) => {
@@ -598,7 +598,7 @@
             useEffect(() => {
                 if (dataToUse.length > 0) {
                     dataToUse.forEach(client => {
-                        addLog(`${client.name} - Google: £${client.googleDailyBudget}, Facebook: £${client.facebookDailyBudget}`, 'info');
+                        addLog(`${client.name} - Google: £${client.googleDailyBudget}, Facebook: £${client.facebookDailyBudget} (Total: £${client.currentDailyBudget})`, 'info');
                     });
                 }
             }, [dataToUse, addLog]);
