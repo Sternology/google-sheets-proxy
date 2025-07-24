@@ -35,6 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
+            const VERSION = 'v2.1.0'; // Version with Apollo FB support and detailed logging
 
             // Client and campaign configuration
             const clientConfig = {
@@ -375,7 +376,8 @@
                                 React.createElement('h1', { className: 'text-3xl font-bold text-gray-900 mb-2' }, 'Client Budget Performance Dashboard'),
                                 React.createElement('p', { className: 'text-gray-600' }, 
                                     Object.keys(rawData).length > 0 ? 'Data loaded from Google Sheets' : 'Loading...', 
-                                    ' | Updated: ', new Date().toLocaleString()
+                                    ' | Updated: ', new Date().toLocaleString(),
+                                    ' | ', VERSION
                                 ),
                                 loading && React.createElement('p', { className: 'text-sm text-blue-600 mt-1' }, '🔄 Loading data...'),
                                 error && React.createElement('p', { className: 'text-sm text-red-600 mt-1' }, '❌ ', error),
