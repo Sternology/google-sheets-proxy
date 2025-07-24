@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.2.9'; // Fixed campaign matching: changed from partial (.includes) to exact (===) matching
+            const VERSION = 'v2.3.0'; // Added 3-day rolling average and projected spend calculations
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = (clientType) => {
@@ -328,11 +328,11 @@
 
                     let googleSpend = 0;
                     let facebookSpend = 0;
+                    let dailySpend = {}; // Track daily spend for 3-day average
 
                     // Process Google data
                     const googleTabName = `${tabPrefix} Google`;
                     if (data[googleTabName]) {
-                        let clientGoogleSpend = 0;
                         data[googleTabName].forEach(row => {
                             const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
@@ -342,13 +342,17 @@
                                                  config.campaigns.some(c => campaign === c);
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
-                                clientGoogleSpend += cost;
+                                googleSpend += cost;
+                                
+                                // Track daily spend
+                                const dateKey = row.Date;
+                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
+                                dailySpend[dateKey] += cost;
                             }
                         });
-                        googleSpend = clientGoogleSpend;
                     }
 
-                    // Process Facebook data with detailed logging
+                    // Process Facebook data
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
                         let clientFacebookSpend = 0;
@@ -380,6 +384,11 @@
                                     campaign: campaign,
                                     cost: cost
                                 });
+
+                                // Track daily spend
+                                const dateKey = row.Date;
+                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
+                                dailySpend[dateKey] += cost;
                             } else {
                                 excludedRecords.push({
                                     date: row.Date,
@@ -407,14 +416,25 @@
                         facebookSpend = clientFacebookSpend;
                     }
 
+                    // Calculate 3-day rolling average
+                    const sortedDays = Object.keys(dailySpend).sort().reverse(); // Most recent first
+                    const last3Days = sortedDays.slice(0, 3);
+                    const last3DaysSpend = last3Days.reduce((sum, date) => sum + dailySpend[date], 0);
+                    const threeDayAverage = last3Days.length > 0 ? last3DaysSpend / last3Days.length : 0;
+
                     const total = googleSpend + facebookSpend;
                     const used = (total / config.budget) * 100;
                     const remaining = config.budget - total;
                     const expectedSpend = config.budget * (daysElapsed / config.totalDays);
-                    const currentDaily = daysElapsed > 0 ? total / daysElapsed : 0;
+                    const currentDaily = daysElapsed > 0 ? total / daysElapsed : 0; // Overall average
                     const variance = total - expectedSpend;
                     const pace = expectedSpend > 0 ? (total / expectedSpend) * 100 : 100;
                     const requiredDaily = daysLeft > 0 ? remaining / daysLeft : 0;
+
+                    // Calculate projected spend based on 3-day average
+                    const projectedSpend = total + (threeDayAverage * daysLeft);
+                    const projectedOverage = projectedSpend - config.budget;
+                    const projectedUsage = (projectedSpend / config.budget) * 100;
 
                     let status = 'ON TRACK';
                     if (pace < 85) status = 'COLD';
@@ -436,6 +456,10 @@
                         facebookPercent: total > 0 ? (facebookSpend / total) * 100 : 0,
                         expectedSpend: expectedSpend,
                         currentDaily: currentDaily,
+                        threeDayAverage: threeDayAverage, // New: 3-day rolling average
+                        projectedSpend: projectedSpend, // New: projected total spend
+                        projectedOverage: projectedOverage, // New: projected over/under budget
+                        projectedUsage: projectedUsage, // New: projected budget usage %
                         variance: variance,
                         pace: pace,
                         requiredDaily: requiredDaily,
@@ -764,8 +788,20 @@
                                                 )
                                             ),
                                             React.createElement('div', { className: 'flex justify-between items-center' },
-                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Daily Average'),
-                                                React.createElement('span', { className: 'font-semibold' }, '£', client.currentDaily.toFixed(0))
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Daily Average (3-day)'),
+                                                React.createElement('span', { className: 'font-semibold' }, '£', client.threeDayAverage.toFixed(0))
+                                            ),
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Projected Spend'),
+                                                React.createElement('span', { 
+                                                    className: `font-semibold ${client.projectedOverage > 0 ? 'text-red-600' : client.projectedOverage < -100 ? 'text-blue-600' : 'text-green-600'}`
+                                                }, '£', client.projectedSpend.toFixed(0))
+                                            ),
+                                            client.projectedOverage !== 0 && React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, client.projectedOverage > 0 ? 'Projected Over' : 'Projected Under'),
+                                                React.createElement('span', { 
+                                                    className: `font-semibold ${client.projectedOverage > 0 ? 'text-red-600' : 'text-blue-600'}`
+                                                }, client.projectedOverage > 0 ? '+' : '', '£', Math.abs(client.projectedOverage).toFixed(0))
                                             ),
                                             // Platform Split (when enabled)
                                             showPlatformSplit && (client.google > 0 || client.facebook > 0) && React.createElement('div', { className: 'border-t pt-3 mt-3' },
