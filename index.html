@@ -1159,8 +1159,8 @@
                                                 'Pace: ', client.pace.toFixed(0), '%'
                                             ),
                                             React.createElement('div', { className: 'text-xs text-gray-500' },
-                                                pace > 110 ? 'Spending too fast' :
-                                                pace < 90 ? 'Spending too slow' :
+                                                client.pace > 110 ? 'Spending too fast' :
+                                                client.pace < 90 ? 'Spending too slow' :
                                                 'Perfect pace'
                                             )
                                         )
