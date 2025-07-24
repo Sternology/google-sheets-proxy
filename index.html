@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.1.3'; // Fixed Apollo FB and England/Wales campaign matching
+            const VERSION = 'v2.1.4'; // Fixed excessive logging causing page crash
 
             // Client and campaign configuration
             const clientConfig = {
@@ -81,7 +81,11 @@
             // Utility functions
             const addLog = (message, type = 'info') => {
                 const timestamp = new Date().toLocaleTimeString();
-                setLogs(prev => [...prev, { timestamp, message, type }]);
+                // Limit logs to prevent browser crashes
+                setLogs(prev => {
+                    const newLogs = [...prev, { timestamp, message, type }];
+                    return newLogs.slice(-100); // Keep only last 100 logs
+                });
                 console.log(`[${timestamp}] ${message}`);
             };
 
@@ -217,7 +221,6 @@
                     // Process Google data
                     const googleTabName = `${tabPrefix} Google`;
                     if (data[googleTabName]) {
-                        addLog(`Processing Google data for ${clientName} from ${googleTabName}`, 'debug');
                         let clientGoogleSpend = 0;
                         data[googleTabName].forEach(row => {
                             const rowDate = new Date(row.Date);
@@ -229,7 +232,10 @@
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
                                 clientGoogleSpend += cost;
-                                addLog(`Matched ${campaign}: £${cost} for ${clientName}`, 'debug');
+                                // Only log first few matches to avoid spam
+                                if (clientGoogleSpend <= cost * 3) {
+                                    addLog(`Matched ${campaign}: £${cost} for ${clientName}`, 'debug');
+                                }
                             }
                         });
                         googleSpend = clientGoogleSpend;
@@ -241,7 +247,6 @@
                     // Process Facebook data  
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
-                        addLog(`Processing Facebook data for ${clientName} from ${facebookTabName}`, 'debug');
                         let clientFacebookSpend = 0;
                         data[facebookTabName].forEach(row => {
                             const rowDate = new Date(row.Date);
@@ -253,7 +258,10 @@
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
                                 clientFacebookSpend += cost;
-                                addLog(`Matched FB ${campaign}: £${cost} for ${clientName}`, 'debug');
+                                // Only log first few matches to avoid spam
+                                if (clientFacebookSpend <= cost * 3) {
+                                    addLog(`Matched FB ${campaign}: £${cost} for ${clientName}`, 'debug');
+                                }
                             }
                         });
                         facebookSpend = clientFacebookSpend;
@@ -458,7 +466,7 @@
                         logs.length > 0 && React.createElement('div', { className: 'mt-4' },
                             React.createElement('h4', { className: 'text-sm font-medium text-gray-800 mb-2' }, 'System Logs:'),
                             React.createElement('div', { className: 'bg-gray-900 text-green-400 p-3 rounded max-h-32 overflow-y-auto font-mono text-xs' },
-                                logs.slice(-15).map((log, index) =>
+                                logs.slice(-20).map((log, index) =>
                                     React.createElement('div', {
                                         key: index,
                                         className: log.type === 'error' ? 'text-red-400' : 
