@@ -24,12 +24,9 @@
         const ClientBudgetTable = () => {
             const [sortBy, setSortBy] = useState('name');
             const [sortOrder, setSortOrder] = useState('asc');
-            const [showPlatformSplit, setShowPlatformSplit] = useState(true);
             const [rawData, setRawData] = useState({});
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
-            const [logs, setLogs] = useState([]);
-            const [autoRefresh, setAutoRefresh] = useState(false);
 
             // Configuration
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
@@ -183,17 +180,99 @@
 
             // Utility functions
             const addLog = (message, type = 'info') => {
-                const timestamp = new Date().toLocaleTimeString();
-                // Limit logs to prevent browser crashes
-                setLogs(prev => {
-                    const newLogs = [...prev, { timestamp, message, type }];
-                    return newLogs.slice(-100); // Keep only last 100 logs
-                });
-                console.log(`[${timestamp}] ${message}`);
+                console.log(`[${new Date().toLocaleTimeString()}] ${message}`);
             };
 
-            const clearLogs = () => {
-                setLogs([]);
+            // Calculate overall budget health score
+            const calculateBudgetHealthScore = (clients) => {
+                if (clients.length === 0) return { score: 0, grade: 'F', description: 'No data' };
+                
+                let totalScore = 0;
+                clients.forEach(client => {
+                    let clientScore = 100;
+                    
+                    // Pace scoring (40% weight)
+                    if (client.pace < 70 || client.pace > 130) clientScore -= 40;
+                    else if (client.pace < 85 || client.pace > 115) clientScore -= 20;
+                    else if (client.pace < 95 || client.pace > 105) clientScore -= 10;
+                    
+                    // Budget usage scoring (30% weight)
+                    if (client.used > 100) clientScore -= 30;
+                    else if (client.used > 90) clientScore -= 15;
+                    else if (client.used < 60) clientScore -= 10;
+                    
+                    // Days left vs remaining budget (30% weight)
+                    const expectedUsage = (client.daysElapsed / client.totalDays) * 100;
+                    const usageDiff = Math.abs(client.used - expectedUsage);
+                    if (usageDiff > 20) clientScore -= 30;
+                    else if (usageDiff > 10) clientScore -= 15;
+                    
+                    totalScore += Math.max(0, clientScore);
+                });
+                
+                const avgScore = totalScore / clients.length;
+                let grade = 'F';
+                let description = '';
+                
+                if (avgScore >= 90) { grade = 'A'; description = 'Excellent budget control'; }
+                else if (avgScore >= 80) { grade = 'B'; description = 'Good budget management'; }
+                else if (avgScore >= 70) { grade = 'C'; description = 'Fair, needs attention'; }
+                else if (avgScore >= 60) { grade = 'D'; description = 'Poor, action required'; }
+                else { grade = 'F'; description = 'Critical budget issues'; }
+                
+                return { score: Math.round(avgScore), grade, description };
+            };
+
+            // Generate action required cards
+            const generateActionCards = (clients) => {
+                const actions = [];
+                
+                clients.forEach(client => {
+                    if (client.pace > 120) {
+                        actions.push({
+                            type: 'warning',
+                            client: client.name,
+                            message: `Reduce daily spend by £${Math.ceil(client.threeDayAverage - client.requiredDaily)} to stay on budget`,
+                            urgency: 'high'
+                        });
+                    } else if (client.pace < 80) {
+                        actions.push({
+                            type: 'info',
+                            client: client.name,
+                            message: `Can increase daily spend by £${Math.ceil(client.requiredDaily - client.threeDayAverage)} to optimize budget`,
+                            urgency: 'low'
+                        });
+                    }
+                    
+                    if (client.daysLeft <= 3 && client.remaining > 100) {
+                        actions.push({
+                            type: 'urgent',
+                            client: client.name,
+                            message: `Only ${client.daysLeft} days left with £${client.remaining.toFixed(0)} unspent`,
+                            urgency: 'critical'
+                        });
+                    }
+                });
+                
+                return actions.slice(0, 5); // Limit to top 5 actions
+            };
+
+            // Create mini sparkline data for cost per day trend
+            const createSparklineData = (dailySpend, totalDays) => {
+                const dates = Object.keys(dailySpend).sort();
+                const values = dates.map(date => dailySpend[date]);
+                const maxValue = Math.max(...values, 1);
+                
+                // Create SVG path for sparkline
+                const width = 60;
+                const height = 20;
+                const points = values.map((value, index) => {
+                    const x = (index / (values.length - 1)) * width;
+                    const y = height - (value / maxValue) * height;
+                    return `${x},${y}`;
+                }).join(' ');
+                
+                return { points, values, dates, maxValue };
             };
 
             const parseDateRange = (dateRange) => {
@@ -328,7 +407,7 @@
 
                     let googleSpend = 0;
                     let facebookSpend = 0;
-                    let dailySpend = {}; // Track daily spend for 3-day average
+                    let dailySpend = {}; // Track daily spend for trends and 3-day average
 
                     // Process Google data
                     const googleTabName = `${tabPrefix} Google`;
@@ -352,68 +431,26 @@
                         });
                     }
 
-                    // Process Facebook data
+                    // Process Facebook data (simplified - removed detailed logging)
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
-                        let clientFacebookSpend = 0;
-                        let includedRecords = [];
-                        let excludedRecords = [];
-
-                        // Enhanced logging for HC-One clients
-                        if (clientName.includes('HC-One')) {
-                            console.log(`\n=== PROCESSING ${clientName} FACEBOOK DATA ===`);
-                            console.log(`Period: ${config.period}`);
-                            console.log(`Date Range: ${periodStart.toDateString()} to ${periodEnd.toDateString()}`);
-                            console.log(`Expected Campaigns: ${config.campaigns.join(', ')}`);
-                            console.log(`Processing ${data[facebookTabName].length} total FB records...\n`);
-                        }
-
-                        data[facebookTabName].forEach((row, index) => {
+                        data[facebookTabName].forEach(row => {
                             const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
 
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
-                            const inDateRange = isDateInRange(rowDate, periodStart, periodEnd);
 
-                            if (matchesCampaign && inDateRange) {
-                                clientFacebookSpend += cost;
-                                includedRecords.push({
-                                    date: row.Date,
-                                    campaign: campaign,
-                                    cost: cost
-                                });
-
+                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                facebookSpend += cost;
+                                
                                 // Track daily spend
                                 const dateKey = row.Date;
                                 if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
                                 dailySpend[dateKey] += cost;
-                            } else {
-                                excludedRecords.push({
-                                    date: row.Date,
-                                    campaign: campaign,
-                                    cost: cost,
-                                    reason: !matchesCampaign ? 'campaign mismatch' : 'date out of range'
-                                });
                             }
                         });
-
-                        // Log detailed results for HC-One clients
-                        if (clientName.includes('HC-One')) {
-                            console.log(`INCLUDED RECORDS (${includedRecords.length}):`);
-                            includedRecords.forEach(record => {
-                                console.log(`  ${record.date} | ${record.campaign} | £${record.cost}`);
-                            });
-                            console.log(`\nEXCLUDED RECORDS (first 10 of ${excludedRecords.length}):`);
-                            excludedRecords.slice(0, 10).forEach(record => {
-                                console.log(`  ${record.date} | ${record.campaign} | £${record.cost} | ${record.reason}`);
-                            });
-                            console.log(`\nTOTAL FACEBOOK SPEND: £${clientFacebookSpend.toFixed(2)}`);
-                            console.log(`======================================\n`);
-                        }
-
-                        facebookSpend = clientFacebookSpend;
                     }
 
                     // Calculate 3-day rolling average
@@ -421,6 +458,12 @@
                     const last3Days = sortedDays.slice(0, 3);
                     const last3DaysSpend = last3Days.reduce((sum, date) => sum + dailySpend[date], 0);
                     const threeDayAverage = last3Days.length > 0 ? last3DaysSpend / last3Days.length : 0;
+
+                    // Calculate weekly trend (compare last 3 days to previous 3 days)
+                    const prev3Days = sortedDays.slice(3, 6);
+                    const prev3DaysSpend = prev3Days.reduce((sum, date) => sum + (dailySpend[date] || 0), 0);
+                    const prev3DayAverage = prev3Days.length > 0 ? prev3DaysSpend / prev3Days.length : threeDayAverage;
+                    const weeklyTrend = prev3DayAverage > 0 ? ((threeDayAverage - prev3DayAverage) / prev3DayAverage) * 100 : 0;
 
                     const total = googleSpend + facebookSpend;
                     const used = (total / config.budget) * 100;
@@ -435,6 +478,9 @@
                     const projectedSpend = total + (threeDayAverage * daysLeft);
                     const projectedOverage = projectedSpend - config.budget;
                     const projectedUsage = (projectedSpend / config.budget) * 100;
+
+                    // Create sparkline data
+                    const sparklineData = createSparklineData(dailySpend, config.totalDays);
 
                     let status = 'ON TRACK';
                     if (pace < 85) status = 'COLD';
@@ -456,10 +502,13 @@
                         facebookPercent: total > 0 ? (facebookSpend / total) * 100 : 0,
                         expectedSpend: expectedSpend,
                         currentDaily: currentDaily,
-                        threeDayAverage: threeDayAverage, // New: 3-day rolling average
-                        projectedSpend: projectedSpend, // New: projected total spend
-                        projectedOverage: projectedOverage, // New: projected over/under budget
-                        projectedUsage: projectedUsage, // New: projected budget usage %
+                        threeDayAverage: threeDayAverage, // 3-day rolling average
+                        weeklyTrend: weeklyTrend, // Weekly trend indicator
+                        projectedSpend: projectedSpend, // Projected total spend
+                        projectedOverage: projectedOverage, // Projected over/under budget
+                        projectedUsage: projectedUsage, // Projected budget usage %
+                        sparklineData: sparklineData, // Cost per day trend data
+                        dailySpend: dailySpend, // Daily spend breakdown
                         variance: variance,
                         pace: pace,
                         requiredDaily: requiredDaily,
@@ -471,20 +520,18 @@
                 return processedClients;
             };
 
-            // Auto-refresh effect
-            useEffect(() => {
-                if (autoRefresh) {
-                    const interval = setInterval(loadData, 5 * 60 * 1000); // 5 minutes
-                    return () => clearInterval(interval);
-                }
-            }, [autoRefresh]);
-
+            // Auto-refresh effect (removed)
+            
             // Load data on mount
             useEffect(() => {
                 loadData();
             }, []);
 
             const dataToUse = Object.keys(rawData).length > 0 ? processRawData(rawData) : [];
+            
+            // Calculate dashboard-level metrics
+            const budgetHealth = calculateBudgetHealthScore(dataToUse);
+            const actionCards = generateActionCards(dataToUse);
 
             const sortedData = useMemo(() => {
                 const sorted = [...dataToUse].sort((a, b) => {
@@ -565,13 +612,65 @@
                                     Object.keys(rawData).length > 0 ? 'Data loaded from Google Sheets' : 'Loading...', 
                                     ' | Updated: ', new Date().toLocaleString(),
                                     ' | ', VERSION
-                                ),
+                                )
+                    ),
+                    
+                    // Action Required Cards
+                    actionCards.length > 0 && React.createElement('div', { className: 'bg-white rounded-lg shadow-sm p-6 mb-6' },
+                        React.createElement('h2', { className: 'text-xl font-bold text-gray-900 mb-4' }, '⚡ Action Required'),
+                        React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
+                            actionCards.map((action, index) => 
+                                React.createElement('div', { 
+                                    key: index,
+                                    className: `p-4 rounded-lg border-l-4 ${
+                                        action.type === 'urgent' ? 'bg-red-50 border-red-500' :
+                                        action.type === 'warning' ? 'bg-yellow-50 border-yellow-500' :
+                                        'bg-blue-50 border-blue-500'
+                                    }`
+                                },
+                                    React.createElement('div', { className: 'font-semibold text-sm text-gray-900 mb-1' }, action.client),
+                                    React.createElement('div', { 
+                                        className: `text-sm ${
+                                            action.type === 'urgent' ? 'text-red-700' :
+                                            action.type === 'warning' ? 'text-yellow-700' :
+                                            'text-blue-700'
+                                        }`
+                                    }, action.message)
+                                )
+                            )
+                        )
+                    ),
+
+                    // End-of-Period Countdown
+                    React.createElement('div', { className: 'bg-white rounded-lg shadow-sm p-6 mb-6' },
+                        React.createElement('h2', { className: 'text-xl font-bold text-gray-900 mb-4' }, '⏰ Period Countdown'),
+                        React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4' },
+                            dataToUse.map(client => {
+                                const urgencyColor = client.daysLeft <= 2 ? 'text-red-600' : 
+                                                   client.daysLeft <= 7 ? 'text-orange-600' : 'text-green-600';
+                                const bgColor = client.daysLeft <= 2 ? 'bg-red-50' : 
+                                               client.daysLeft <= 7 ? 'bg-orange-50' : 'bg-green-50';
+                                
+                                return React.createElement('div', { 
+                                    key: client.name,
+                                    className: `${bgColor} p-4 rounded-lg text-center`
+                                },
+                                    React.createElement('div', { className: 'text-sm font-medium text-gray-600 mb-1' }, client.name),
+                                    React.createElement('div', { className: `text-2xl font-bold ${urgencyColor}` }, client.daysLeft),
+                                    React.createElement('div', { className: 'text-xs text-gray-500' }, 'days left'),
+                                    React.createElement('div', { className: 'text-xs text-gray-600 mt-1' }, 
+                                        client.period.split(' - ')[1]
+                                    )
+                                );
+                            })
+                        )
+                    ),,
                                 loading && React.createElement('p', { className: 'text-sm text-blue-600 mt-1' }, '🔄 Loading data...'),
                                 error && React.createElement('p', { className: 'text-sm text-red-600 mt-1' }, '❌ ', error),
                                 Object.keys(rawData).length > 0 && React.createElement('p', { className: 'text-sm text-green-600 mt-1' }, '✅ Processing ', Object.keys(rawData).length, ' data tabs')
                             ),
-                            // Summary Cards
-                            React.createElement('div', { className: 'mt-4 lg:mt-0 grid grid-cols-2 lg:grid-cols-4 gap-4 text-center' },
+                            // Summary Cards with Budget Health Score
+                            React.createElement('div', { className: 'mt-4 lg:mt-0 grid grid-cols-2 lg:grid-cols-5 gap-4 text-center' },
                                 React.createElement('div', { className: 'bg-blue-50 p-4 rounded-lg' },
                                     React.createElement('div', { className: 'text-2xl font-bold text-blue-600' }, '£', totalSpend.toFixed(0)),
                                     React.createElement('div', { className: 'text-sm text-blue-700' }, 'Total Spend')
@@ -587,6 +686,31 @@
                                 React.createElement('div', { className: 'bg-purple-50 p-4 rounded-lg' },
                                     React.createElement('div', { className: 'text-2xl font-bold text-purple-600' }, totalSpend > 0 ? ((totalFacebook/totalSpend)*100).toFixed(0) : 0, '%'),
                                     React.createElement('div', { className: 'text-sm text-purple-700' }, 'Meta/FB')
+                                ),
+                                React.createElement('div', { 
+                                    className: `p-4 rounded-lg ${
+                                        budgetHealth.grade === 'A' ? 'bg-green-50' :
+                                        budgetHealth.grade === 'B' ? 'bg-blue-50' :
+                                        budgetHealth.grade === 'C' ? 'bg-yellow-50' :
+                                        budgetHealth.grade === 'D' ? 'bg-orange-50' : 'bg-red-50'
+                                    }`
+                                },
+                                    React.createElement('div', { 
+                                        className: `text-2xl font-bold ${
+                                            budgetHealth.grade === 'A' ? 'text-green-600' :
+                                            budgetHealth.grade === 'B' ? 'text-blue-600' :
+                                            budgetHealth.grade === 'C' ? 'text-yellow-600' :
+                                            budgetHealth.grade === 'D' ? 'text-orange-600' : 'text-red-600'
+                                        }`
+                                    }, budgetHealth.grade),
+                                    React.createElement('div', { 
+                                        className: `text-sm ${
+                                            budgetHealth.grade === 'A' ? 'text-green-700' :
+                                            budgetHealth.grade === 'B' ? 'text-blue-700' :
+                                            budgetHealth.grade === 'C' ? 'text-yellow-700' :
+                                            budgetHealth.grade === 'D' ? 'text-orange-700' : 'text-red-700'
+                                        }`
+                                    }, 'Health Score')
                                 )
                             )
                         ),
@@ -673,9 +797,54 @@
                                         key: client.name,
                                         className: `border-2 rounded-xl p-6 transition-all hover:shadow-lg ${getBorderColor(client.status)}`
                                     },
-                                        // Client Name and Status
+                                        // Client Name, Status and Trend
                                         React.createElement('div', { className: 'flex justify-between items-start mb-4' },
-                                            React.createElement('h3', { className: 'font-bold text-lg text-gray-900' }, client.name),
+                                            React.createElement('div', null,
+                                                React.createElement('h3', { className: 'font-bold text-lg text-gray-900' }, client.name),
+                                                // Weekly Trend Indicator
+                                                React.createElement('div', { className: 'flex items-center mt-1' },
+                                                    React.createElement('span', { className: 'text-xs text-gray-500 mr-2' }, 'Weekly trend:'),
+                                                    React.createElement('span', { 
+                                                        className: `text-xs font-semibold ${
+                                                            client.weeklyTrend > 10 ? 'text-red-600' :
+                                                            client.weeklyTrend > 5 ? 'text-orange-600' :
+                                                            client.weeklyTrend < -10 ? 'text-blue-600' :
+                                                            client.weeklyTrend < -5 ? 'text-cyan-600' :
+                                                            'text-green-600'
+                                                        }`
+                                                    },
+                                                        client.weeklyTrend > 0 ? '↗' : client.weeklyTrend < 0 ? '↘' : '→',
+                                                        ' ',
+                                                        client.weeklyTrend > 0 ? '+' : '',
+                                                        client.weeklyTrend.toFixed(1), '%'
+                                                    )
+                                                )
+                                            ),
+                                        
+                                        // Cost Per Day Trend Chart (mini sparkline)
+                                        React.createElement('div', { className: 'mb-4' },
+                                            React.createElement('div', { className: 'flex justify-between items-center mb-2' },
+                                                React.createElement('span', { className: 'text-sm font-medium text-gray-600' }, 'Daily Spend Trend'),
+                                                React.createElement('span', { className: 'text-xs text-gray-500' }, 
+                                                    '£', Object.values(client.dailySpend).length > 0 ? 
+                                                    Math.max(...Object.values(client.dailySpend)).toFixed(0) : '0', ' max'
+                                                )
+                                            ),
+                                            React.createElement('div', { className: 'relative' },
+                                                React.createElement('svg', { 
+                                                    width: '100%', 
+                                                    height: '24',
+                                                    className: 'bg-gray-100 rounded'
+                                                },
+                                                    client.sparklineData.points && React.createElement('polyline', {
+                                                        fill: 'none',
+                                                        stroke: client.pace > 115 ? '#EF4444' : client.pace < 85 ? '#3B82F6' : '#10B981',
+                                                        strokeWidth: '2',
+                                                        points: client.sparklineData.points
+                                                    })
+                                                )
+                                            )
+                                        ),
                                             React.createElement('span', { 
                                                 className: `px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(client.status)}`
                                             }, 
@@ -803,8 +972,8 @@
                                                     className: `font-semibold ${client.projectedOverage > 0 ? 'text-red-600' : 'text-blue-600'}`
                                                 }, client.projectedOverage > 0 ? '+' : '', '£', Math.abs(client.projectedOverage).toFixed(0))
                                             ),
-                                            // Platform Split (when enabled)
-                                            showPlatformSplit && (client.google > 0 || client.facebook > 0) && React.createElement('div', { className: 'border-t pt-3 mt-3' },
+                                            // Platform Split (always shown)
+                                            (client.google > 0 || client.facebook > 0) && React.createElement('div', { className: 'border-t pt-3 mt-3' },
                                                 React.createElement('div', { className: 'flex justify-between items-center mb-2' },
                                                     React.createElement('span', { className: 'text-sm text-gray-600' }, 'Google'),
                                                     React.createElement('span', { className: 'font-semibold text-orange-600' }, '£', client.google.toFixed(0), ' (', client.googlePercent.toFixed(0), '%)')
