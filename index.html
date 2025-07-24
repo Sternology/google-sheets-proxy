@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.2.3'; // Fixed HC1 date ranges to use 11th-10th cycle instead of monthly
+            const VERSION = 'v2.2.4'; // Updated client names to show HC-One instead of Care Always On
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = (clientType) => {
@@ -157,14 +157,14 @@
                     tabPrefix: 'Cygnet',
                     skipTabs: true
                 },
-                'Care Always On - England/Wales': {
+                'HC-One - England/Wales': {
                     campaigns: ['AL -  Always on Care Search Campaign', 'Always on Care', 'HC-One Always On Campaign'], // Google + Facebook campaigns
                     budget: 1800,
                     period: getCurrentPeriod('hc1'), // 11th to 10th cycle
                     totalDays: getTotalDays('hc1'),
                     tabPrefix: 'HC1'
                 },
-                'Care Always On - Scotland': {
+                'HC-One - Scotland': {
                     campaigns: ['AL - Scotland Always on Care Search Campaign', 'Always on Care – Scotland'], // Google + Facebook campaigns
                     budget: 1000,
                     period: getCurrentPeriod('hc1'), // 11th to 10th cycle
