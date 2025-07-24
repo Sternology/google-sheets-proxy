@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.5.3'; // Fixed Facebook budget calculation to only include active adsets
+            const VERSION = 'v2.6.0'; // Fixed Facebook budget (pennies to pounds) and removed 3-day average
 
             // Get current reporting period for each client (dynamic) - moved outside component
             const getCurrentPeriod = useCallback((clientType) => {
@@ -241,14 +241,14 @@
                         actions.push({
                             type: 'warning',
                             client: client.name,
-                            message: `Reduce daily spend by £${Math.ceil(client.threeDayAverage - client.requiredDaily)} to stay on budget`,
+                            message: `Reduce daily spend by £${Math.ceil(client.currentDaily - client.requiredDaily)} to stay on budget`,
                             urgency: 'high'
                         });
                     } else if (client.pace < 80) {
                         actions.push({
                             type: 'info',
                             client: client.name,
-                            message: `Can increase daily spend by £${Math.ceil(client.requiredDaily - client.threeDayAverage)} to optimize budget`,
+                            message: `Can increase daily spend by £${Math.ceil(client.requiredDaily - client.currentDaily)} to optimize budget`,
                             urgency: 'low'
                         });
                     }
@@ -263,11 +263,11 @@
                     }
 
                     // Budget vs daily spend comparison
-                    if (client.currentDailyBudget && client.threeDayAverage > client.currentDailyBudget * 1.1) {
+                    if (client.currentDailyBudget && client.currentDaily > client.currentDailyBudget * 1.1) {
                         actions.push({
                             type: 'warning',
                             client: client.name,
-                            message: `Spending £${client.threeDayAverage.toFixed(0)}/day but budget is £${client.currentDailyBudget.toFixed(0)}/day`,
+                            message: `Spending £${client.currentDaily.toFixed(0)}/day but budget is £${client.currentDailyBudget.toFixed(0)}/day`,
                             urgency: 'high'
                         });
                     }
@@ -534,12 +534,12 @@
                     // Calculate current daily budget total
                     const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
 
-                    // Calculate projected spend based on current daily budgets
+                    // Calculate projected spend based on current daily budgets vs current pace
                     const projectedSpendByBudget = total + (currentDailyBudget * daysLeft);
-                    const projectedSpendBy3Day = total + (threeDayAverage * daysLeft);
+                    const projectedSpendByPace = total + (currentDaily * daysLeft);
                     
-                    // Use the more conservative (lower) projection
-                    const projectedSpend = Math.min(projectedSpendByBudget, projectedSpendBy3Day);
+                    // Use the higher projection (more conservative for budget management)
+                    const projectedSpend = Math.max(projectedSpendByBudget, projectedSpendByPace);
                     const projectedOverage = projectedSpend - config.budget;
                     const projectedUsage = (projectedSpend / config.budget) * 100;
 
@@ -582,7 +582,7 @@
                         currentDailyBudget: currentDailyBudget,
                         googleDailyBudget: googleDailyBudget,
                         facebookDailyBudget: facebookDailyBudget,
-                        budgetUtilization: currentDailyBudget > 0 ? (threeDayAverage / currentDailyBudget) * 100 : 0
+                        budgetUtilization: currentDailyBudget > 0 ? (currentDaily / currentDailyBudget) * 100 : 0
                     });
                 });
 
@@ -1053,10 +1053,6 @@
                                             React.createElement('div', { className: 'flex justify-between items-center' },
                                                 React.createElement('span', { className: 'text-sm text-gray-600' }, 'Daily Budget'),
                                                 React.createElement('span', { className: 'font-semibold text-cyan-600' }, '£', client.currentDailyBudget.toFixed(0), '/day')
-                                            ),
-                                            React.createElement('div', { className: 'flex justify-between items-center' },
-                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Daily Average (3-day)'),
-                                                React.createElement('span', { className: 'font-semibold' }, '£', client.threeDayAverage.toFixed(0))
                                             ),
                                             client.currentDailyBudget > 0 && React.createElement('div', { className: 'flex justify-between items-center' },
                                                 React.createElement('span', { className: 'text-sm text-gray-600' }, 'Budget Utilization'),
