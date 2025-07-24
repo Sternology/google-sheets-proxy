@@ -27,12 +27,15 @@
             const [rawData, setRawData] = useState({});
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
+            const [showPlatformSplit, setShowPlatformSplit] = useState(true);
+            const [autoRefresh, setAutoRefresh] = useState(false);
+            const [logs, setLogs] = useState([]);
 
             // Configuration
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.4.1'; // Fixed syntax error: removed extra comma
+            const VERSION = 'v2.4.2'; // Updated version
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = (clientType) => {
@@ -180,7 +183,13 @@
 
             // Utility functions
             const addLog = (message, type = 'info') => {
-                console.log(`[${new Date().toLocaleTimeString()}] ${message}`);
+                const timestamp = new Date().toLocaleTimeString();
+                setLogs(prev => [...prev, { message, type, timestamp }]);
+                console.log(`[${timestamp}] ${message}`);
+            };
+
+            const clearLogs = () => {
+                setLogs([]);
             };
 
             // Calculate overall budget health score
@@ -520,8 +529,6 @@
                 return processedClients;
             };
 
-            // Auto-refresh effect (removed)
-            
             // Load data on mount
             useEffect(() => {
                 loadData();
@@ -613,6 +620,105 @@
                                     ' | Updated: ', new Date().toLocaleString(),
                                     ' | ', VERSION
                                 )
+                            ),
+                            // Summary Cards with Budget Health Score
+                            React.createElement('div', { className: 'mt-4 lg:mt-0 grid grid-cols-2 lg:grid-cols-5 gap-4 text-center' },
+                                React.createElement('div', { className: 'bg-blue-50 p-4 rounded-lg' },
+                                    React.createElement('div', { className: 'text-2xl font-bold text-blue-600' }, '£', totalSpend.toFixed(0)),
+                                    React.createElement('div', { className: 'text-sm text-blue-700' }, 'Total Spend')
+                                ),
+                                React.createElement('div', { className: 'bg-green-50 p-4 rounded-lg' },
+                                    React.createElement('div', { className: 'text-2xl font-bold text-green-600' }, statusCounts['ON TRACK'] || 0),
+                                    React.createElement('div', { className: 'text-sm text-green-700' }, 'On Track')
+                                ),
+                                React.createElement('div', { className: 'bg-orange-50 p-4 rounded-lg' },
+                                    React.createElement('div', { className: 'text-2xl font-bold text-orange-600' }, totalSpend > 0 ? ((totalGoogle/totalSpend)*100).toFixed(0) : 0, '%'),
+                                    React.createElement('div', { className: 'text-sm text-orange-700' }, 'Google')
+                                ),
+                                React.createElement('div', { className: 'bg-purple-50 p-4 rounded-lg' },
+                                    React.createElement('div', { className: 'text-2xl font-bold text-purple-600' }, totalSpend > 0 ? ((totalFacebook/totalSpend)*100).toFixed(0) : 0, '%'),
+                                    React.createElement('div', { className: 'text-sm text-purple-700' }, 'Meta/FB')
+                                ),
+                                React.createElement('div', { 
+                                    className: `p-4 rounded-lg ${
+                                        budgetHealth.grade === 'A' ? 'bg-green-50' :
+                                        budgetHealth.grade === 'B' ? 'bg-blue-50' :
+                                        budgetHealth.grade === 'C' ? 'bg-yellow-50' :
+                                        budgetHealth.grade === 'D' ? 'bg-orange-50' : 'bg-red-50'
+                                    }`
+                                },
+                                    React.createElement('div', { 
+                                        className: `text-2xl font-bold ${
+                                            budgetHealth.grade === 'A' ? 'text-green-600' :
+                                            budgetHealth.grade === 'B' ? 'text-blue-600' :
+                                            budgetHealth.grade === 'C' ? 'text-yellow-600' :
+                                            budgetHealth.grade === 'D' ? 'text-orange-600' : 'text-red-600'
+                                        }`
+                                    }, budgetHealth.grade),
+                                    React.createElement('div', { 
+                                        className: `text-sm ${
+                                            budgetHealth.grade === 'A' ? 'text-green-700' :
+                                            budgetHealth.grade === 'B' ? 'text-blue-700' :
+                                            budgetHealth.grade === 'C' ? 'text-yellow-700' :
+                                            budgetHealth.grade === 'D' ? 'text-orange-700' : 'text-red-700'
+                                        }`
+                                    }, 'Health Score')
+                                )
+                            )
+                        ),
+                        
+                        // Status indicators
+                        React.createElement('div', { className: 'mt-4' },
+                            loading && React.createElement('p', { className: 'text-sm text-blue-600 mt-1' }, '🔄 Loading data...'),
+                            error && React.createElement('p', { className: 'text-sm text-red-600 mt-1' }, '❌ ', error),
+                            Object.keys(rawData).length > 0 && React.createElement('p', { className: 'text-sm text-green-600 mt-1' }, '✅ Processing ', Object.keys(rawData).length, ' data tabs')
+                        ),
+
+                        // Controls
+                        React.createElement('div', { className: 'mt-6 flex flex-wrap items-center gap-4' },
+                            React.createElement('label', { className: 'flex items-center' },
+                                React.createElement('input', {
+                                    type: 'checkbox',
+                                    checked: showPlatformSplit,
+                                    onChange: (e) => setShowPlatformSplit(e.target.checked),
+                                    className: 'mr-2'
+                                }),
+                                React.createElement('span', { className: 'text-sm text-gray-700' }, 'Show Platform Split')
+                            ),
+                            React.createElement('label', { className: 'flex items-center' },
+                                React.createElement('input', {
+                                    type: 'checkbox',
+                                    checked: autoRefresh,
+                                    onChange: (e) => setAutoRefresh(e.target.checked),
+                                    className: 'mr-2'
+                                }),
+                                React.createElement('span', { className: 'text-sm text-gray-700' }, 'Auto-refresh (5 min)')
+                            ),
+                            React.createElement('button', {
+                                onClick: loadData,
+                                disabled: loading,
+                                className: 'px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm'
+                            }, loading ? 'Loading...' : '🔄 Refresh Data'),
+                            React.createElement('button', {
+                                onClick: clearLogs,
+                                className: 'px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm'
+                            }, 'Clear Logs')
+                        ),
+                        // Logs Display
+                        logs.length > 0 && React.createElement('div', { className: 'mt-4' },
+                            React.createElement('h4', { className: 'text-sm font-medium text-gray-800 mb-2' }, 'System Logs:'),
+                            React.createElement('div', { className: 'bg-gray-900 text-green-400 p-3 rounded max-h-32 overflow-y-auto font-mono text-xs' },
+                                logs.slice(-20).map((log, index) =>
+                                    React.createElement('div', {
+                                        key: index,
+                                        className: log.type === 'error' ? 'text-red-400' : 
+                                                 log.type === 'success' ? 'text-green-400' : 
+                                                 log.type === 'warning' ? 'text-yellow-400' : 
+                                                 log.type === 'debug' ? 'text-gray-400' : 'text-blue-400'
+                                    }, `[${log.timestamp}] ${log.message}`)
+                                )
+                            )
+                        )
                     ),
                     
                     // Action Required Cards
@@ -664,102 +770,8 @@
                                 );
                             })
                         )
-                    ),,
-                                loading && React.createElement('p', { className: 'text-sm text-blue-600 mt-1' }, '🔄 Loading data...'),
-                                error && React.createElement('p', { className: 'text-sm text-red-600 mt-1' }, '❌ ', error),
-                                Object.keys(rawData).length > 0 && React.createElement('p', { className: 'text-sm text-green-600 mt-1' }, '✅ Processing ', Object.keys(rawData).length, ' data tabs')
-                            ),
-                            // Summary Cards with Budget Health Score
-                            React.createElement('div', { className: 'mt-4 lg:mt-0 grid grid-cols-2 lg:grid-cols-5 gap-4 text-center' },
-                                React.createElement('div', { className: 'bg-blue-50 p-4 rounded-lg' },
-                                    React.createElement('div', { className: 'text-2xl font-bold text-blue-600' }, '£', totalSpend.toFixed(0)),
-                                    React.createElement('div', { className: 'text-sm text-blue-700' }, 'Total Spend')
-                                ),
-                                React.createElement('div', { className: 'bg-green-50 p-4 rounded-lg' },
-                                    React.createElement('div', { className: 'text-2xl font-bold text-green-600' }, statusCounts['ON TRACK'] || 0),
-                                    React.createElement('div', { className: 'text-sm text-green-700' }, 'On Track')
-                                ),
-                                React.createElement('div', { className: 'bg-orange-50 p-4 rounded-lg' },
-                                    React.createElement('div', { className: 'text-2xl font-bold text-orange-600' }, totalSpend > 0 ? ((totalGoogle/totalSpend)*100).toFixed(0) : 0, '%'),
-                                    React.createElement('div', { className: 'text-sm text-orange-700' }, 'Google')
-                                ),
-                                React.createElement('div', { className: 'bg-purple-50 p-4 rounded-lg' },
-                                    React.createElement('div', { className: 'text-2xl font-bold text-purple-600' }, totalSpend > 0 ? ((totalFacebook/totalSpend)*100).toFixed(0) : 0, '%'),
-                                    React.createElement('div', { className: 'text-sm text-purple-700' }, 'Meta/FB')
-                                ),
-                                React.createElement('div', { 
-                                    className: `p-4 rounded-lg ${
-                                        budgetHealth.grade === 'A' ? 'bg-green-50' :
-                                        budgetHealth.grade === 'B' ? 'bg-blue-50' :
-                                        budgetHealth.grade === 'C' ? 'bg-yellow-50' :
-                                        budgetHealth.grade === 'D' ? 'bg-orange-50' : 'bg-red-50'
-                                    }`
-                                },
-                                    React.createElement('div', { 
-                                        className: `text-2xl font-bold ${
-                                            budgetHealth.grade === 'A' ? 'text-green-600' :
-                                            budgetHealth.grade === 'B' ? 'text-blue-600' :
-                                            budgetHealth.grade === 'C' ? 'text-yellow-600' :
-                                            budgetHealth.grade === 'D' ? 'text-orange-600' : 'text-red-600'
-                                        }`
-                                    }, budgetHealth.grade),
-                                    React.createElement('div', { 
-                                        className: `text-sm ${
-                                            budgetHealth.grade === 'A' ? 'text-green-700' :
-                                            budgetHealth.grade === 'B' ? 'text-blue-700' :
-                                            budgetHealth.grade === 'C' ? 'text-yellow-700' :
-                                            budgetHealth.grade === 'D' ? 'text-orange-700' : 'text-red-700'
-                                        }`
-                                    }, 'Health Score')
-                                )
-                            )
-                        ),
-                        // Controls
-                        React.createElement('div', { className: 'mt-6 flex flex-wrap items-center gap-4' },
-                            React.createElement('label', { className: 'flex items-center' },
-                                React.createElement('input', {
-                                    type: 'checkbox',
-                                    checked: showPlatformSplit,
-                                    onChange: (e) => setShowPlatformSplit(e.target.checked),
-                                    className: 'mr-2'
-                                }),
-                                React.createElement('span', { className: 'text-sm text-gray-700' }, 'Show Platform Split')
-                            ),
-                            React.createElement('label', { className: 'flex items-center' },
-                                React.createElement('input', {
-                                    type: 'checkbox',
-                                    checked: autoRefresh,
-                                    onChange: (e) => setAutoRefresh(e.target.checked),
-                                    className: 'mr-2'
-                                }),
-                                React.createElement('span', { className: 'text-sm text-gray-700' }, 'Auto-refresh (5 min)')
-                            ),
-                            React.createElement('button', {
-                                onClick: loadData,
-                                disabled: loading,
-                                className: 'px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm'
-                            }, loading ? 'Loading...' : '🔄 Refresh Data'),
-                            React.createElement('button', {
-                                onClick: clearLogs,
-                                className: 'px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm'
-                            }, 'Clear Logs')
-                        ),
-                        // Logs Display
-                        logs.length > 0 && React.createElement('div', { className: 'mt-4' },
-                            React.createElement('h4', { className: 'text-sm font-medium text-gray-800 mb-2' }, 'System Logs:'),
-                            React.createElement('div', { className: 'bg-gray-900 text-green-400 p-3 rounded max-h-32 overflow-y-auto font-mono text-xs' },
-                                logs.slice(-20).map((log, index) =>
-                                    React.createElement('div', {
-                                        key: index,
-                                        className: log.type === 'error' ? 'text-red-400' : 
-                                                 log.type === 'success' ? 'text-green-400' : 
-                                                 log.type === 'warning' ? 'text-yellow-400' : 
-                                                 log.type === 'debug' ? 'text-gray-400' : 'text-blue-400'
-                                    }, `[${log.timestamp}] ${log.message}`)
-                                )
-                            )
-                        )
                     ),
+                    
                     // Main Dashboard Content with Visual Gauges
                     React.createElement('div', { className: 'bg-white rounded-lg shadow-sm p-6' },
                         React.createElement('h2', { className: 'text-2xl font-bold mb-6 text-center' }, 'Budget Performance Dashboard'),
@@ -820,6 +832,13 @@
                                                     )
                                                 )
                                             ),
+                                            React.createElement('span', { 
+                                                className: `px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(client.status)}`
+                                            }, 
+                                                client.status === 'ON TRACK' ? '✅ ON TRACK' : 
+                                                client.status === 'HOT' ? '🔥 HOT' : '🧊 COLD'
+                                            )
+                                        ),
                                         
                                         // Cost Per Day Trend Chart (mini sparkline)
                                         React.createElement('div', { className: 'mb-4' },
@@ -843,13 +862,6 @@
                                                         points: client.sparklineData.points
                                                     })
                                                 )
-                                            )
-                                        ),
-                                            React.createElement('span', { 
-                                                className: `px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(client.status)}`
-                                            }, 
-                                                client.status === 'ON TRACK' ? '✅ ON TRACK' : 
-                                                client.status === 'HOT' ? '🔥 HOT' : '🧊 COLD'
                                             )
                                         ),
                                         
