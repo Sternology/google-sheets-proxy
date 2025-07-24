@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.7.0'; // Fixed pace calculation: now based on daily budget vs required daily spend
+            const VERSION = 'v2.7.1'; // Added HC-One Facebook campaign debugging
 
             // Get current reporting period for each client (dynamic) - moved outside component
             const getCurrentPeriod = useCallback((clientType) => {
@@ -506,10 +506,20 @@
                                     const adsetKey = `${campaign}_${adsetName}`;
                                     adsetBudgetMap.set(adsetKey, dailyBudget);
                                     
+                                    // Debug logging for HC-One Facebook budget mapping
+                                    if (clientName.includes('HC-One') && clientName.includes('England')) {
+                                        console.log(`🔍 HC-One E/W FACEBOOK: Campaign="${campaign}", Adset="${adsetName}", RawBudget=${rawBudget}, ConvertedBudget=£${dailyBudget.toFixed(2)}, Matches=${matchesCampaign}`);
+                                    }
+                                    
                                     // Debug logging for Apollo Facebook budget conversion
                                     if (clientName === 'Apollo') {
                                         console.log(`✅ FACEBOOK ADSET: ${adsetName} - Raw: ${rawBudget} -> Converted: £${dailyBudget.toFixed(2)}`);
                                     }
+                                }
+                            } else {
+                                // Debug non-matching campaigns for HC-One
+                                if (clientName.includes('HC-One') && clientName.includes('England') && dailyBudget > 0) {
+                                    console.log(`❌ HC-One E/W NOT MATCHED: Campaign="${campaign}", Adset="${adsetName}", Budget=${dailyBudget.toFixed(2)}, Expected campaigns: [${config.campaigns.join(', ')}]`);
                                 }
                             }
                         });
@@ -520,6 +530,15 @@
                         // Debug logging for total Facebook budget
                         if (clientName === 'Apollo' && facebookDailyBudget > 0) {
                             console.log(`✅ FACEBOOK TOTAL for Apollo: ${Array.from(adsetBudgetMap.values()).length} adsets = £${facebookDailyBudget.toFixed(2)}/day`);
+                        }
+                        
+                        // Debug logging for HC-One Facebook budget total
+                        if (clientName.includes('HC-One') && clientName.includes('England')) {
+                            console.log(`✅ HC-One E/W FACEBOOK TOTAL: ${Array.from(adsetBudgetMap.entries()).length} adsets:`);
+                            Array.from(adsetBudgetMap.entries()).forEach(([key, budget]) => {
+                                console.log(`   - ${key}: £${budget.toFixed(2)}/day`);
+                            });
+                            console.log(`   Total: £${facebookDailyBudget.toFixed(2)}/day`);
                         }
                     }
 
