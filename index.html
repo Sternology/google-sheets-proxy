@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.2.7'; // Clarified campaign mapping: Google vs Facebook campaigns separated by platform
+            const VERSION = 'v2.2.8'; // Added detailed console logging to debug Facebook spend calculations
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = (clientType) => {
@@ -348,22 +348,62 @@
                         googleSpend = clientGoogleSpend;
                     }
 
-                    // Process Facebook data  
+                    // Process Facebook data with detailed logging
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
                         let clientFacebookSpend = 0;
-                        data[facebookTabName].forEach(row => {
+                        let includedRecords = [];
+                        let excludedRecords = [];
+
+                        // Enhanced logging for HC-One clients
+                        if (clientName.includes('HC-One')) {
+                            console.log(`\n=== PROCESSING ${clientName} FACEBOOK DATA ===`);
+                            console.log(`Period: ${config.period}`);
+                            console.log(`Date Range: ${periodStart.toDateString()} to ${periodEnd.toDateString()}`);
+                            console.log(`Expected Campaigns: ${config.campaigns.join(', ')}`);
+                            console.log(`Processing ${data[facebookTabName].length} total FB records...\n`);
+                        }
+
+                        data[facebookTabName].forEach((row, index) => {
                             const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
 
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign.includes(c));
+                            const inDateRange = isDateInRange(rowDate, periodStart, periodEnd);
 
-                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                            if (matchesCampaign && inDateRange) {
                                 clientFacebookSpend += cost;
+                                includedRecords.push({
+                                    date: row.Date,
+                                    campaign: campaign,
+                                    cost: cost
+                                });
+                            } else {
+                                excludedRecords.push({
+                                    date: row.Date,
+                                    campaign: campaign,
+                                    cost: cost,
+                                    reason: !matchesCampaign ? 'campaign mismatch' : 'date out of range'
+                                });
                             }
                         });
+
+                        // Log detailed results for HC-One clients
+                        if (clientName.includes('HC-One')) {
+                            console.log(`INCLUDED RECORDS (${includedRecords.length}):`);
+                            includedRecords.forEach(record => {
+                                console.log(`  ${record.date} | ${record.campaign} | £${record.cost}`);
+                            });
+                            console.log(`\nEXCLUDED RECORDS (first 10 of ${excludedRecords.length}):`);
+                            excludedRecords.slice(0, 10).forEach(record => {
+                                console.log(`  ${record.date} | ${record.campaign} | £${record.cost} | ${record.reason}`);
+                            });
+                            console.log(`\nTOTAL FACEBOOK SPEND: £${clientFacebookSpend.toFixed(2)}`);
+                            console.log(`======================================\n`);
+                        }
+
                         facebookSpend = clientFacebookSpend;
                     }
 
