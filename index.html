@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.1.4'; // Fixed excessive logging causing page crash
+            const VERSION = 'v2.1.5'; // Fixed infinite re-render loop
 
             // Client and campaign configuration
             const clientConfig = {
@@ -118,7 +118,7 @@
                 return checkDate >= startDate && checkDate <= endDate;
             };
 
-            // Load data from proxy 
+            // Load data from proxy
             const loadData = async () => {
                 clearLogs();
                 addLog('Starting data load process...', 'info');
@@ -216,8 +216,6 @@
                     let googleSpend = 0;
                     let facebookSpend = 0;
 
-                    addLog(`Processing ${clientName} with tabPrefix: ${tabPrefix}`, 'debug');
-
                     // Process Google data
                     const googleTabName = `${tabPrefix} Google`;
                     if (data[googleTabName]) {
@@ -232,16 +230,9 @@
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
                                 clientGoogleSpend += cost;
-                                // Only log first few matches to avoid spam
-                                if (clientGoogleSpend <= cost * 3) {
-                                    addLog(`Matched ${campaign}: £${cost} for ${clientName}`, 'debug');
-                                }
                             }
                         });
                         googleSpend = clientGoogleSpend;
-                        addLog(`Total Google spend for ${clientName}: £${googleSpend.toFixed(2)}`, 'info');
-                    } else {
-                        addLog(`No Google data found for ${clientName} (expected: ${googleTabName})`, 'warning');
                     }
 
                     // Process Facebook data  
@@ -258,16 +249,9 @@
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
                                 clientFacebookSpend += cost;
-                                // Only log first few matches to avoid spam
-                                if (clientFacebookSpend <= cost * 3) {
-                                    addLog(`Matched FB ${campaign}: £${cost} for ${clientName}`, 'debug');
-                                }
                             }
                         });
                         facebookSpend = clientFacebookSpend;
-                        addLog(`Total Facebook spend for ${clientName}: £${facebookSpend.toFixed(2)}`, 'info');
-                    } else {
-                        addLog(`No Facebook data found for ${clientName} (expected: ${facebookTabName})`, 'debug');
                     }
 
                     const total = googleSpend + facebookSpend;
@@ -282,8 +266,6 @@
                     let status = 'ON TRACK';
                     if (pace < 85) status = 'COLD';
                     else if (pace > 115) status = 'HOT';
-
-                    addLog(`Final totals for ${clientName}: £${total.toFixed(2)} (${used.toFixed(1)}% of budget)`, 'info');
 
                     processedClients.push({
                         name: clientName,
