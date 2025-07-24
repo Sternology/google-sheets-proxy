@@ -1,0 +1,15 @@
+{
+  "name": "google-sheets-proxy",
+  "version": "1.0.0",
+  "description": "Simple proxy server for Google Sheets API to bypass CORS",
+  "main": "api/sheets-proxy.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build",
+    "deploy": "vercel"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "vercel": "^33.0.0"
+  }
+}
