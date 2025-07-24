@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.2.2'; // Added HC1 FB support for HC-One Facebook campaigns
+            const VERSION = 'v2.2.3'; // Fixed HC1 date ranges to use 11th-10th cycle instead of monthly
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = (clientType) => {
@@ -75,6 +75,40 @@
                     
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                     return `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
+                } else if (clientType === 'hc1') {
+                    // HC1: 11th to 10th cycle
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const day = today.getDate();
+                    
+                    let startMonth, startYear, endMonth, endYear;
+                    
+                    if (day >= 11) {
+                        // We're in the new period (11th onwards)
+                        startMonth = currentMonth;
+                        startYear = currentYear;
+                        endMonth = currentMonth + 1;
+                        endYear = currentYear;
+                    } else {
+                        // We're still in the previous period (before 11th)
+                        startMonth = currentMonth - 1;
+                        startYear = currentYear;
+                        endMonth = currentMonth;
+                        endYear = currentYear;
+                    }
+                    
+                    // Handle year rollover
+                    if (startMonth < 0) {
+                        startMonth = 11;
+                        startYear--;
+                    }
+                    if (endMonth > 11) {
+                        endMonth = 0;
+                        endYear++;
+                    }
+                    
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[startMonth]} 11 - ${monthNames[endMonth]} 10`;
                 } else {
                     // Others: 1st to end of month cycle
                     const currentMonth = today.getMonth();
@@ -91,6 +125,8 @@
             const getTotalDays = (clientType) => {
                 if (clientType === 'apollo') {
                     return 30; // 26th to 25th = 30 days
+                } else if (clientType === 'hc1') {
+                    return 30; // 11th to 10th = 30 days
                 } else {
                     const today = new Date();
                     return new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -124,15 +160,15 @@
                 'Care Always On - England/Wales': {
                     campaigns: ['AL -  Always on Care Search Campaign', 'Always on Care', 'HC-One Always On Campaign'], // Google + Facebook campaigns
                     budget: 1800,
-                    period: getCurrentPeriod('standard'), // 1st to end of month
-                    totalDays: getTotalDays('standard'),
+                    period: getCurrentPeriod('hc1'), // 11th to 10th cycle
+                    totalDays: getTotalDays('hc1'),
                     tabPrefix: 'HC1'
                 },
                 'Care Always On - Scotland': {
                     campaigns: ['AL - Scotland Always on Care Search Campaign', 'Always on Care – Scotland'], // Google + Facebook campaigns
                     budget: 1000,
-                    period: getCurrentPeriod('standard'), // 1st to end of month
-                    totalDays: getTotalDays('standard'),
+                    period: getCurrentPeriod('hc1'), // 11th to 10th cycle
+                    totalDays: getTotalDays('hc1'),
                     tabPrefix: 'HC1',
                     skipTabs: true
                 }
