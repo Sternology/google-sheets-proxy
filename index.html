@@ -468,7 +468,8 @@
                         googleDailyBudget: googleDailyBudget,
                         facebookDailyBudget: facebookDailyBudget,
                         projectedSpend: projectedSpend,
-                        projectedOverBudget: projectedOverBudget
+                        projectedOverBudget: projectedOverBudget,
+                        dailySpendData: dailySpend
                     });
                 });
 
@@ -920,6 +921,88 @@
                                                                         <span className="font-semibold text-purple-600">£{client.facebookDailyBudget.toFixed(0)}/day</span>
                                                                     </div>
                                                                 )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Daily Spending Trend */}
+                                                {Object.keys(client.dailySpendData || {}).length > 0 && (
+                                                    <div className="border-t pt-3 mt-3">
+                                                        <div className="text-sm font-medium text-gray-700 mb-2">
+                                                            <span 
+                                                                className="cursor-help border-b border-dotted border-gray-400"
+                                                                title="Daily spending trend showing actual spend vs target daily budget line"
+                                                            >
+                                                                Daily Spending Trend
+                                                            </span>
+                                                        </div>
+                                                        <div className="relative h-16 bg-gray-50 rounded">
+                                                            <svg className="w-full h-full" viewBox="0 0 200 64">
+                                                                {/* Grid lines */}
+                                                                <defs>
+                                                                    <pattern id="grid" width="10" height="8" patternUnits="userSpaceOnUse">
+                                                                        <path d="M 10 0 L 0 0 0 8" fill="none" stroke="#f3f4f6" strokeWidth="0.5"/>
+                                                                    </pattern>
+                                                                </defs>
+                                                                <rect width="200" height="64" fill="url(#grid)" />
+                                                                
+                                                                {/* Target daily budget line */}
+                                                                <line 
+                                                                    x1="10" y1={64 - ((client.budget / client.totalDays) / Math.max(...Object.values(client.dailySpendData || {}), client.budget / client.totalDays) * 50)} 
+                                                                    x2="190" y2={64 - ((client.budget / client.totalDays) / Math.max(...Object.values(client.dailySpendData || {}), client.budget / client.totalDays) * 50)}
+                                                                    stroke="#F59E0B" strokeWidth="1" strokeDasharray="3,3"
+                                                                />
+                                                                
+                                                                {/* Spending trend line */}
+                                                                <polyline
+                                                                    fill="none"
+                                                                    stroke="#3B82F6"
+                                                                    strokeWidth="2"
+                                                                    points={
+                                                                        Object.entries(client.dailySpendData || {})
+                                                                            .sort(([a], [b]) => new Date(a) - new Date(b))
+                                                                            .map(([date, spend], index) => {
+                                                                                const x = 10 + (index * (180 / Math.max(Object.keys(client.dailySpendData || {}).length - 1, 1)));
+                                                                                const maxSpend = Math.max(...Object.values(client.dailySpendData || {}), client.budget / client.totalDays);
+                                                                                const y = 64 - ((spend / maxSpend) * 50);
+                                                                                return `${x},${y}`;
+                                                                            })
+                                                                            .join(' ')
+                                                                    }
+                                                                />
+                                                                
+                                                                {/* Data points */}
+                                                                {Object.entries(client.dailySpendData || {})
+                                                                    .sort(([a], [b]) => new Date(a) - new Date(b))
+                                                                    .map(([date, spend], index) => {
+                                                                        const x = 10 + (index * (180 / Math.max(Object.keys(client.dailySpendData || {}).length - 1, 1)));
+                                                                        const maxSpend = Math.max(...Object.values(client.dailySpendData || {}), client.budget / client.totalDays);
+                                                                        const y = 64 - ((spend / maxSpend) * 50);
+                                                                        return (
+                                                                            <circle
+                                                                                key={date}
+                                                                                cx={x}
+                                                                                cy={y}
+                                                                                r="2"
+                                                                                fill="#3B82F6"
+                                                                                className="hover:r-3 transition-all"
+                                                                            />
+                                                                        );
+                                                                    })
+                                                                }
+                                                            </svg>
+                                                            
+                                                            {/* Legend */}
+                                                            <div className="absolute bottom-1 right-1 flex gap-3 text-xs">
+                                                                <div className="flex items-center gap-1">
+                                                                    <div className="w-2 h-0.5 bg-blue-500"></div>
+                                                                    <span className="text-gray-600">Daily Spend</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <div className="w-2 h-0.5 bg-yellow-500 opacity-70" style={{borderTop: '1px dashed'}}></div>
+                                                                    <span className="text-gray-600">Target</span>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
