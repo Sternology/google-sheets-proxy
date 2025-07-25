@@ -521,33 +521,12 @@
 
                                 if (dailyBudget > 0 && adsetName) {
                                     const adsetKey = `${campaign}_${adsetName}`;
-                                    const previousBudget = adsetBudgetMap.get(adsetKey) || 0;
                                     adsetBudgetMap.set(adsetKey, dailyBudget);
-                                    
-                                    // ONLY log budget updates for HC-One E/W and show what's happening
-                                    if (clientName === 'HC-One - England/Wales') {
-                                        console.log(`✅ BUDGET SET: ${adsetKey} = £${dailyBudget.toFixed(2)} (was £${previousBudget.toFixed(2)}) on ${row.Date}`);
-                                    }
-                                }
-                            } else {
-                                // Log why rows are not matching for HC-One E/W
-                                if (clientName === 'HC-One - England/Wales' && campaign === 'Always on Care') {
-                                    const inDateRange = isDateInRange(rowDate, periodStart, periodEnd);
-                                    console.log(`❌ NOT PROCESSED: ${campaign} on ${row.Date}, InRange=${inDateRange}, Matches=${matchesCampaign}, Budget=${dailyBudget.toFixed(2)}`);
                                 }
                             }
                         });
 
                         facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
-                        
-                        // Debug logging for HC-One Facebook budget total
-                        if (clientName === 'HC-One - England/Wales') {
-                            console.log(`✅ HC-One E/W FACEBOOK TOTAL: ${Array.from(adsetBudgetMap.entries()).length} adsets:`);
-                            Array.from(adsetBudgetMap.entries()).forEach(([key, budget]) => {
-                                console.log(`   - ${key}: £${budget.toFixed(2)}/day`);
-                            });
-                            console.log(`   Total: £${facebookDailyBudget.toFixed(2)}/day`);
-                        }
                     }
 
                     // Calculate metrics
