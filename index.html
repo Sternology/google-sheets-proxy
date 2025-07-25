@@ -1,4 +1,466 @@
-// TARGETED debugging for HC-One England/Wales ONLY
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Budget Performance Dashboard</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useCallback } = React;
+
+        const ClientBudgetTable = () => {
+            const [sortBy, setSortBy] = useState('name');
+            const [sortOrder, setSortOrder] = useState('asc');
+            const [rawData, setRawData] = useState({});
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [showPlatformSplit, setShowPlatformSplit] = useState(true);
+            const [autoRefresh, setAutoRefresh] = useState(false);
+            const [logs, setLogs] = useState([]);
+
+            // Configuration
+            const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
+            const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
+            const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
+            const VERSION = 'v2.7.4'; // Fixed HC-One Facebook budget parsing
+
+            // Get current reporting period for each client (dynamic)
+            const getCurrentPeriod = useCallback((clientType) => {
+                const today = new Date();
+                
+                if (clientType === 'apollo') {
+                    // Apollo: 26th to 25th cycle
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const day = today.getDate();
+                    
+                    let startMonth, startYear, endMonth, endYear;
+                    
+                    if (day >= 26) {
+                        startMonth = currentMonth;
+                        startYear = currentYear;
+                        endMonth = currentMonth + 1;
+                        endYear = currentYear;
+                    } else {
+                        startMonth = currentMonth - 1;
+                        startYear = currentYear;
+                        endMonth = currentMonth;
+                        endYear = currentYear;
+                    }
+                    
+                    if (startMonth < 0) {
+                        startMonth = 11;
+                        startYear--;
+                    }
+                    if (endMonth > 11) {
+                        endMonth = 0;
+                        endYear++;
+                    }
+                    
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
+                } else if (clientType === 'hc1') {
+                    // HC1: 11th to 10th cycle
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const day = today.getDate();
+                    
+                    let startMonth, startYear, endMonth, endYear;
+                    
+                    if (day >= 11) {
+                        startMonth = currentMonth;
+                        startYear = currentYear;
+                        endMonth = currentMonth + 1;
+                        endYear = currentYear;
+                    } else {
+                        startMonth = currentMonth - 1;
+                        startYear = currentYear;
+                        endMonth = currentMonth;
+                        endYear = currentYear;
+                    }
+                    
+                    if (startMonth < 0) {
+                        startMonth = 11;
+                        startYear--;
+                    }
+                    if (endMonth > 11) {
+                        endMonth = 0;
+                        endYear++;
+                    }
+                    
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[startMonth]} 11 - ${monthNames[endMonth]} 10`;
+                } else {
+                    // Others: 1st to end of month cycle
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const currentMonthName = monthNames[currentMonth];
+                    const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+                    
+                    return `${currentMonthName} 1 - ${currentMonthName} ${lastDay}`;
+                }
+            }, []);
+
+            // Get total days for the period
+            const getTotalDays = useCallback((clientType) => {
+                if (clientType === 'apollo') {
+                    return 30; // 26th to 25th = 30 days
+                } else if (clientType === 'hc1') {
+                    return 30; // 11th to 10th = 30 days
+                } else {
+                    const today = new Date();
+                    return new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                }
+            }, []);
+
+            // Client and campaign configuration
+            const clientConfig = useMemo(() => ({
+                'Apollo': {
+                    campaigns: ['*'],
+                    budget: 1221,
+                    period: getCurrentPeriod('apollo'),
+                    totalDays: getTotalDays('apollo'),
+                    note: 'Budget increased to £60/day each platform - showing improvement!'
+                },
+                'Cygnet Care': {
+                    campaigns: ['Care and Support Always On Performance Max', 'Care and Support Always On - Conversions 2025', 'Care and Support Always On - Traffic - 2024'],
+                    budget: 800,
+                    period: getCurrentPeriod('standard'),
+                    totalDays: getTotalDays('standard'),
+                    tabPrefix: 'Cygnet'
+                },
+                'Cygnet Nursing': {
+                    campaigns: ['Nursing always on Performance Max', 'Always On Nursing Search', 'Nursing Always on April 2024'],
+                    budget: 800,
+                    period: getCurrentPeriod('standard'),
+                    totalDays: getTotalDays('standard'),
+                    tabPrefix: 'Cygnet',
+                    skipTabs: true
+                },
+                'HC-One - England/Wales': {
+                    campaigns: [
+                        'AL -  Always on Care Search Campaign', // Google (note: double space)
+                        'Always on Care', // Facebook (England/Wales only)
+                        'HC-One Always On Campaign' // Facebook (England/Wales only)
+                    ],
+                    budget: 1800,
+                    period: getCurrentPeriod('hc1'),
+                    totalDays: getTotalDays('hc1'),
+                    tabPrefix: 'HC1'
+                },
+                'HC-One - Scotland': {
+                    campaigns: [
+                        'AL - Scotland Always on Care Search Campaign', // Google
+                        'Always on Care – Scotland' // Facebook (Scotland only)
+                    ],
+                    budget: 1000,
+                    period: getCurrentPeriod('hc1'),
+                    totalDays: getTotalDays('hc1'),
+                    tabPrefix: 'HC1',
+                    skipTabs: true
+                }
+            }), [getCurrentPeriod, getTotalDays]);
+
+            // Utility functions
+            const addLog = useCallback((message, type = 'info') => {
+                const timestamp = new Date().toLocaleTimeString();
+                setLogs(prev => [...prev, { message, type, timestamp }]);
+                console.log(`[${timestamp}] ${message}`);
+            }, []);
+
+            const clearLogs = useCallback(() => {
+                setLogs([]);
+            }, []);
+
+            // Calculate overall budget health score
+            const calculateBudgetHealthScore = (clients) => {
+                if (clients.length === 0) return { score: 0, grade: 'F', description: 'No data' };
+                
+                let totalScore = 0;
+                clients.forEach(client => {
+                    let clientScore = 100;
+                    
+                    if (client.pace < 80 || client.pace > 120) clientScore -= 40;
+                    else if (client.pace < 90 || client.pace > 110) clientScore -= 20;
+                    else if (client.pace < 95 || client.pace > 105) clientScore -= 10;
+                    
+                    if (client.used > 100) clientScore -= 30;
+                    else if (client.used > 90) clientScore -= 15;
+                    else if (client.used < 60) clientScore -= 10;
+                    
+                    const expectedUsage = (client.daysElapsed / client.totalDays) * 100;
+                    const usageDiff = Math.abs(client.used - expectedUsage);
+                    if (usageDiff > 20) clientScore -= 30;
+                    else if (usageDiff > 10) clientScore -= 15;
+                    
+                    totalScore += Math.max(0, clientScore);
+                });
+                
+                const avgScore = totalScore / clients.length;
+                let grade = 'F';
+                let description = '';
+                
+                if (avgScore >= 90) { grade = 'A'; description = 'Excellent budget control'; }
+                else if (avgScore >= 80) { grade = 'B'; description = 'Good budget management'; }
+                else if (avgScore >= 70) { grade = 'C'; description = 'Fair, needs attention'; }
+                else if (avgScore >= 60) { grade = 'D'; description = 'Poor, action required'; }
+                else { grade = 'F'; description = 'Critical budget issues'; }
+                
+                return { score: Math.round(avgScore), grade, description };
+            };
+
+            // Generate action required cards
+            const generateActionCards = (clients) => {
+                const actions = [];
+                
+                clients.forEach(client => {
+                    if (client.pace > 120) {
+                        actions.push({
+                            type: 'warning',
+                            client: client.name,
+                            message: `Reduce daily spend by £${Math.ceil(client.currentDaily - client.requiredDaily)} to stay on budget`,
+                            urgency: 'high'
+                        });
+                    } else if (client.pace < 80) {
+                        actions.push({
+                            type: 'info',
+                            client: client.name,
+                            message: `Can increase daily spend by £${Math.ceil(client.requiredDaily - client.currentDaily)} to optimize budget`,
+                            urgency: 'low'
+                        });
+                    }
+                    
+                    if (client.daysLeft <= 3 && client.remaining > 100) {
+                        actions.push({
+                            type: 'urgent',
+                            client: client.name,
+                            message: `Only ${client.daysLeft} days left with £${client.remaining.toFixed(0)} unspent`,
+                            urgency: 'critical'
+                        });
+                    }
+
+                    if (client.currentDailyBudget && client.currentDaily > client.currentDailyBudget * 1.1) {
+                        actions.push({
+                            type: 'warning',
+                            client: client.name,
+                            message: `Spending £${client.currentDaily.toFixed(0)}/day but budget is £${client.currentDailyBudget.toFixed(0)}/day`,
+                            urgency: 'high'
+                        });
+                    }
+                });
+                
+                return actions.slice(0, 5);
+            };
+
+            // Create mini sparkline data for cost per day trend
+            const createSparklineData = (dailySpend, totalDays) => {
+                const dates = Object.keys(dailySpend).sort();
+                const values = dates.map(date => dailySpend[date]);
+                const maxValue = Math.max(...values, 1);
+                
+                const width = 60;
+                const height = 20;
+                const points = values.map((value, index) => {
+                    const x = (index / (values.length - 1)) * width;
+                    const y = height - (value / maxValue) * height;
+                    return `${x},${y}`;
+                }).join(' ');
+                
+                return { points, values, dates, maxValue };
+            };
+
+            const parseDateRange = (dateRange) => {
+                const parts = dateRange.split(' - ');
+                if (parts.length !== 2) return { start: null, end: null };
+                
+                const currentYear = new Date().getFullYear();
+                const parseDate = (dateStr) => {
+                    const [month, day] = dateStr.split(' ');
+                    const monthMap = {
+                        'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                        'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+                    };
+                    return new Date(currentYear, monthMap[month], parseInt(day));
+                };
+                
+                return {
+                    start: parseDate(parts[0]),
+                    end: parseDate(parts[1])
+                };
+            };
+
+            const isDateInRange = (date, startDate, endDate) => {
+                const checkDate = new Date(date);
+                return checkDate >= startDate && checkDate <= endDate;
+            };
+
+            // Load data from proxy
+            const loadData = async () => {
+                clearLogs();
+                addLog('Starting data load process...', 'info');
+                setLoading(true);
+                setError(null);
+
+                try {
+                    const allData = {};
+                    const expectedTabs = ['Apollo Google', 'Apollo FB', 'Cygnet Google', 'Cygnet FB', 'HC1 Google', 'HC1 FB'];
+
+                    addLog(`Expected tabs: ${expectedTabs.join(', ')}`, 'info');
+
+                    let successCount = 0;
+                    let errorCount = 0;
+
+                    for (const tabName of expectedTabs) {
+                        try {
+                            addLog(`Fetching data from tab: ${tabName}`, 'info');
+                            
+                            const range = tabName.includes('FB') ? `${tabName}!A:E` : `${tabName}!A:F`;
+                            const url = `${PROXY_URL}?spreadsheetId=${SPREADSHEET_ID}&range=${encodeURIComponent(range)}&apiKey=${API_KEY}`;
+                            
+                            const response = await fetch(url);
+                            
+                            addLog(`Response status for ${tabName}: ${response.status}`, response.ok ? 'success' : 'error');
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                
+                                if (data.values && data.values.length > 1) {
+                                    const headers = data.values[0];
+                                    const rows = data.values.slice(1);
+                                    
+                                    addLog(`Headers for ${tabName}: ${headers.join(', ')}`, 'info');
+                                    
+                                    const tabData = rows.map(row => {
+                                        const rowData = {};
+                                        headers.forEach((header, index) => {
+                                            if (tabName.includes('FB')) {
+                                                if (header === 'Campaign name') {
+                                                    rowData['Campaign'] = row[index] || '';
+                                                } else if (header === 'Amount spent (GBP)') {
+                                                    rowData['Cost'] = row[index] || '';
+                                                } else if (header === 'Adset name') {
+                                                    rowData['AdsetName'] = row[index] || '';
+                                                } else if (header === 'Adset daily budget') {
+                                                    rowData['DailyBudget'] = row[index] || '';
+                                                } else {
+                                                    rowData[header] = row[index] || '';
+                                                }
+                                            } else {
+                                                if (header === 'Budget Amount') {
+                                                    rowData['DailyBudget'] = row[index] || '';
+                                                } else {
+                                                    rowData[header] = row[index] || '';
+                                                }
+                                            }
+                                        });
+                                        return rowData;
+                                    });
+                                    
+                                    allData[tabName] = tabData;
+                                    successCount++;
+                                    addLog(`✅ Loaded ${tabData.length} rows from ${tabName}`, 'success');
+                                } else {
+                                    errorCount++;
+                                    addLog(`⚠️ No data found in tab: ${tabName}`, 'warning');
+                                }
+                            } else {
+                                errorCount++;
+                                const errorText = await response.text();
+                                addLog(`❌ Could not fetch tab: ${tabName} (${response.status}) - ${errorText}`, 'error');
+                            }
+                        } catch (tabError) {
+                            errorCount++;
+                            addLog(`❌ Error fetching tab ${tabName}: ${tabError.message}`, 'error');
+                        }
+                    }
+
+                    if (Object.keys(allData).length === 0) {
+                        throw new Error('No data could be loaded from any tabs');
+                    }
+
+                    setRawData(allData);
+                    addLog(`🎉 Data loading complete! Loaded ${Object.keys(allData).length} tabs`, 'success');
+
+                } catch (err) {
+                    setError(err.message);
+                    addLog(`💥 Fatal error: ${err.message}`, 'error');
+                } finally {
+                    setLoading(false);
+                    addLog('Load process finished', 'info');
+                }
+            };
+
+            // Process raw data into client metrics
+            const processRawData = useCallback((data) => {
+                const today = new Date();
+                const processedClients = [];
+
+                Object.keys(clientConfig).forEach(clientName => {
+                    const config = clientConfig[clientName];
+                    const tabPrefix = config.tabPrefix || clientName;
+                    const { start: periodStart, end: periodEnd } = parseDateRange(config.period);
+                    
+                    if (!periodStart || !periodEnd) return;
+
+                    const daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24)) + 1;
+                    const daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)));
+
+                    let googleSpend = 0;
+                    let facebookSpend = 0;
+                    let dailySpend = {};
+                    let googleDailyBudget = 0;
+                    let facebookDailyBudget = 0;
+
+                    // Process Google data
+                    const googleTabName = `${tabPrefix} Google`;
+                    if (data[googleTabName]) {
+                        const budgetMap = new Map();
+                        
+                        data[googleTabName].forEach(row => {
+                            const rowDate = new Date(row.Date);
+                            const campaign = row.Campaign || '';
+                            const cost = parseFloat(row.Cost) || 0;
+                            const dailyBudget = parseFloat(row.DailyBudget) || 0;
+
+                            const matchesCampaign = config.campaigns.includes('*') || 
+                                                 config.campaigns.some(c => campaign === c);
+
+                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                googleSpend += cost;
+                                
+                                const dateKey = row.Date;
+                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
+                                dailySpend[dateKey] += cost;
+
+                                if (dailyBudget > 0) {
+                                    budgetMap.set(campaign, dailyBudget);
+                                }
+                            }
+                        });
+
+                        googleDailyBudget = Array.from(budgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                    }
+
+                    // Process Facebook data with TARGETED debugging for HC-One England/Wales ONLY
+                    const facebookTabName = `${tabPrefix} FB`;
+                    if (data[facebookTabName]) {
+                        const adsetBudgetMap = new Map();
+                        
+                        // TARGETED debugging for HC-One England/Wales ONLY
                         if (clientName === 'HC-One - England/Wales') {
                             console.log(`🔍 === HC-ONE E/W FACEBOOK ANALYSIS ===`);
                             console.log(`📅 Date range: ${periodStart.toDateString()} to ${periodEnd.toDateString()}`);
@@ -35,3 +497,632 @@
                                 });
                             });
                         }
+                        
+                        data[facebookTabName].forEach(row => {
+                            const rowDate = new Date(row.Date);
+                            const campaign = row.Campaign || '';
+                            const adsetName = row.AdsetName || '';
+                            const cost = parseFloat(row.Cost) || 0;
+                            const rawBudget = row.DailyBudget || 0;
+                            
+                            // Budget parsing with proper comma handling
+                            let dailyBudget = 0;
+                            if (rawBudget) {
+                                // Remove commas first, then parse
+                                const cleanBudget = String(rawBudget).replace(/,/g, '');
+                                const numericBudget = parseFloat(cleanBudget);
+                                
+                                // ONLY log budget conversion for HC-One E/W
+                                if (clientName === 'HC-One - England/Wales' && 
+                                    (campaign === 'Always on Care' || campaign === 'HC-One Always On Campaign')) {
+                                    console.log(`🔍 BUDGET PARSING: Campaign="${campaign}", Adset="${adsetName}", Date=${row.Date}, Raw=${rawBudget}, Clean=${cleanBudget}, Numeric=${numericBudget}`);
+                                }
+                                
+                                if (!isNaN(numericBudget)) {
+                                    if (numericBudget > 100) {
+                                        dailyBudget = numericBudget / 100;
+                                    } else {
+                                        dailyBudget = numericBudget;
+                                    }
+                                }
+                                
+                                // ONLY log final budget for HC-One E/W relevant campaigns
+                                if (clientName === 'HC-One - England/Wales' && 
+                                    (campaign === 'Always on Care' || campaign === 'HC-One Always On Campaign')) {
+                                    console.log(`🔍 FINAL BUDGET: Campaign="${campaign}", Adset="${adsetName}", Final=£${dailyBudget.toFixed(2)}`);
+                                }
+                            }
+
+                            const matchesCampaign = config.campaigns.includes('*') || 
+                                                 config.campaigns.some(c => campaign === c);
+
+                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                facebookSpend += cost;
+                                
+                                const dateKey = row.Date;
+                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
+                                dailySpend[dateKey] += cost;
+
+                                if (dailyBudget > 0 && adsetName) {
+                                    const adsetKey = `${campaign}_${adsetName}`;
+                                    adsetBudgetMap.set(adsetKey, dailyBudget);
+                                }
+                            }
+                        });
+
+                        facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                    }
+
+                    // Calculate metrics
+                    const sortedDays = Object.keys(dailySpend).sort().reverse();
+                    const last3Days = sortedDays.slice(0, 3);
+                    const last3DaysSpend = last3Days.reduce((sum, date) => sum + dailySpend[date], 0);
+                    const threeDayAverage = last3Days.length > 0 ? last3DaysSpend / last3Days.length : 0;
+
+                    const prev3Days = sortedDays.slice(3, 6);
+                    const prev3DaysSpend = prev3Days.reduce((sum, date) => sum + (dailySpend[date] || 0), 0);
+                    const prev3DayAverage = prev3Days.length > 0 ? prev3DaysSpend / prev3Days.length : threeDayAverage;
+                    const weeklyTrend = prev3DayAverage > 0 ? ((threeDayAverage - prev3DayAverage) / prev3DayAverage) * 100 : 0;
+
+                    const total = googleSpend + facebookSpend;
+                    const used = (total / config.budget) * 100;
+                    const remaining = config.budget - total;
+                    const currentDaily = daysElapsed > 0 ? total / daysElapsed : 0;
+                    const requiredDaily = daysLeft > 0 ? remaining / daysLeft : 0;
+
+                    const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
+
+                    const projectedSpendByBudget = total + (currentDailyBudget * daysLeft);
+                    const projectedSpendByPace = total + (currentDaily * daysLeft);
+                    
+                    const projectedSpend = Math.max(projectedSpendByBudget, projectedSpendByPace);
+                    const projectedOverage = projectedSpend - config.budget;
+                    const projectedUsage = (projectedSpend / config.budget) * 100;
+
+                    const pace = requiredDaily > 0 ? (currentDailyBudget / requiredDaily) * 100 : 100;
+
+                    const sparklineData = createSparklineData(dailySpend, config.totalDays);
+
+                    let status = 'ON TRACK';
+                    if (pace < 90) status = 'COLD';
+                    else if (pace > 110) status = 'HOT';
+
+                    processedClients.push({
+                        name: clientName,
+                        google: googleSpend,
+                        facebook: facebookSpend,
+                        total: total,
+                        budget: config.budget,
+                        period: config.period,
+                        totalDays: config.totalDays,
+                        daysElapsed: daysElapsed,
+                        daysLeft: daysLeft,
+                        used: used,
+                        remaining: remaining,
+                        googlePercent: total > 0 ? (googleSpend / total) * 100 : 0,
+                        facebookPercent: total > 0 ? (facebookSpend / total) * 100 : 0,
+                        expectedSpend: config.budget * (daysElapsed / config.totalDays),
+                        currentDaily: currentDaily,
+                        threeDayAverage: threeDayAverage,
+                        weeklyTrend: weeklyTrend,
+                        projectedSpend: projectedSpend,
+                        projectedOverage: projectedOverage,
+                        projectedUsage: projectedUsage,
+                        sparklineData: sparklineData,
+                        dailySpend: dailySpend,
+                        variance: projectedOverage,
+                        pace: pace,
+                        requiredDaily: requiredDaily,
+                        status: status,
+                        note: config.note || '',
+                        currentDailyBudget: currentDailyBudget,
+                        googleDailyBudget: googleDailyBudget,
+                        facebookDailyBudget: facebookDailyBudget,
+                        budgetUtilization: currentDailyBudget > 0 ? (currentDaily / currentDailyBudget) * 100 : 0
+                    });
+                });
+
+                return processedClients;
+            }, [clientConfig]);
+
+            // Load data on mount
+            useEffect(() => {
+                loadData();
+            }, []);
+
+            const dataToUse = useMemo(() => {
+                return Object.keys(rawData).length > 0 ? processRawData(rawData) : [];
+            }, [rawData, processRawData]);
+            
+            // Calculate dashboard-level metrics
+            const budgetHealth = calculateBudgetHealthScore(dataToUse);
+            const actionCards = generateActionCards(dataToUse);
+
+            const sortedData = useMemo(() => {
+                const sorted = [...dataToUse].sort((a, b) => {
+                    let aVal = a[sortBy];
+                    let bVal = b[sortBy];
+                    
+                    if (typeof aVal === 'string') {
+                        aVal = aVal.toLowerCase();
+                        bVal = bVal.toLowerCase();
+                    }
+                    
+                    if (sortOrder === 'asc') {
+                        return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                    } else {
+                        return aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+                    }
+                });
+                return sorted;
+            }, [dataToUse, sortBy, sortOrder]);
+
+            const handleSort = (field) => {
+                if (sortBy === field) {
+                    setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+                } else {
+                    setSortBy(field);
+                    setSortOrder('asc');
+                }
+            };
+
+            const getStatusColor = (status) => {
+                if (status === 'COLD') return 'bg-blue-100 text-blue-800 border-blue-200';
+                if (status === 'HOT') return 'bg-red-100 text-red-800 border-red-200';
+                if (status === 'ON TRACK') return 'bg-green-100 text-green-800 border-green-200';
+                return 'bg-gray-100 text-gray-800 border-gray-200';
+            };
+
+            const getPaceColor = (pace) => {
+                if (pace < 90) return 'text-blue-600 font-bold';
+                if (pace > 110) return 'text-red-600 font-bold';
+                return 'text-green-600 font-bold';
+            };
+
+            const getUsageColor = (used) => {
+                if (used < 40) return 'text-blue-600';
+                if (used > 80) return 'text-red-600';
+                return 'text-green-600';
+            };
+
+            const getBudgetUtilizationColor = (utilization) => {
+                if (utilization < 70) return 'text-blue-600';
+                if (utilization > 110) return 'text-red-600';
+                return 'text-green-600';
+            };
+
+            const getDaysLeftColor = (daysLeft) => {
+                if (daysLeft <= 2) return 'text-red-600 font-bold bg-red-50 px-2 py-1 rounded';
+                if (daysLeft <= 7) return 'text-orange-600 font-medium';
+                return 'text-gray-700';
+            };
+
+            const totalSpend = dataToUse.reduce((sum, client) => sum + client.total, 0);
+            const totalBudget = dataToUse.reduce((sum, client) => sum + client.budget, 0);
+            const totalGoogle = dataToUse.reduce((sum, client) => sum + client.google, 0);
+            const totalFacebook = dataToUse.reduce((sum, client) => sum + client.facebook, 0);
+            const totalDailyBudget = dataToUse.reduce((sum, client) => sum + client.currentDailyBudget, 0);
+
+            const statusCounts = dataToUse.reduce((acc, client) => {
+                acc[client.status] = (acc[client.status] || 0) + 1;
+                return acc;
+            }, {});
+
+            const SortIcon = ({ field }) => {
+                if (sortBy !== field) return React.createElement('span', { className: 'text-gray-400' }, '↕️');
+                return React.createElement('span', { className: 'text-blue-600' }, sortOrder === 'asc' ? '↑' : '↓');
+            };
+
+            return React.createElement('div', { className: 'w-full min-h-screen bg-gray-50 p-4' },
+                React.createElement('div', { className: 'max-w-full mx-auto' },
+                    // Header with summary
+                    React.createElement('div', { className: 'bg-white rounded-lg shadow-sm p-6 mb-6' },
+                        React.createElement('div', { className: 'flex flex-col lg:flex-row lg:items-center lg:justify-between' },
+                            React.createElement('div', null,
+                                React.createElement('h1', { className: 'text-3xl font-bold text-gray-900 mb-2' }, 'Client Budget Performance Dashboard'),
+                                React.createElement('p', { className: 'text-gray-600' }, 
+                                    Object.keys(rawData).length > 0 ? 'Data loaded from Google Sheets' : 'Loading...', 
+                                    ' | Updated: ', new Date().toLocaleString(),
+                                    ' | ', VERSION
+                                )
+                            ),
+                            // Summary Cards
+                            React.createElement('div', { className: 'mt-4 lg:mt-0 grid grid-cols-2 lg:grid-cols-6 gap-4 text-center' },
+                                React.createElement('div', { className: 'bg-blue-50 p-4 rounded-lg' },
+                                    React.createElement('div', { className: 'text-2xl font-bold text-blue-600' }, '£', totalSpend.toFixed(0)),
+                                    React.createElement('div', { className: 'text-sm text-blue-700' }, 'Total Spend')
+                                ),
+                                React.createElement('div', { className: 'bg-green-50 p-4 rounded-lg' },
+                                    React.createElement('div', { className: 'text-2xl font-bold text-green-600' }, statusCounts['ON TRACK'] || 0),
+                                    React.createElement('div', { className: 'text-sm text-green-700' }, 'On Track')
+                                ),
+                                React.createElement('div', { className: 'bg-orange-50 p-4 rounded-lg' },
+                                    React.createElement('div', { className: 'text-2xl font-bold text-orange-600' }, totalSpend > 0 ? ((totalGoogle/totalSpend)*100).toFixed(0) : 0, '%'),
+                                    React.createElement('div', { className: 'text-sm text-orange-700' }, 'Google')
+                                ),
+                                React.createElement('div', { className: 'bg-purple-50 p-4 rounded-lg' },
+                                    React.createElement('div', { className: 'text-2xl font-bold text-purple-600' }, totalSpend > 0 ? ((totalFacebook/totalSpend)*100).toFixed(0) : 0, '%'),
+                                    React.createElement('div', { className: 'text-sm text-purple-700' }, 'Meta/FB')
+                                ),
+                                React.createElement('div', { className: 'bg-cyan-50 p-4 rounded-lg' },
+                                    React.createElement('div', { className: 'text-2xl font-bold text-cyan-600' }, '£', totalDailyBudget.toFixed(0)),
+                                    React.createElement('div', { className: 'text-sm text-cyan-700' }, 'Daily Budget')
+                                ),
+                                React.createElement('div', { 
+                                    className: `p-4 rounded-lg ${
+                                        budgetHealth.grade === 'A' ? 'bg-green-50' :
+                                        budgetHealth.grade === 'B' ? 'bg-blue-50' :
+                                        budgetHealth.grade === 'C' ? 'bg-yellow-50' :
+                                        budgetHealth.grade === 'D' ? 'bg-orange-50' : 'bg-red-50'
+                                    }`
+                                },
+                                    React.createElement('div', { 
+                                        className: `text-2xl font-bold ${
+                                            budgetHealth.grade === 'A' ? 'text-green-600' :
+                                            budgetHealth.grade === 'B' ? 'text-blue-600' :
+                                            budgetHealth.grade === 'C' ? 'text-yellow-600' :
+                                            budgetHealth.grade === 'D' ? 'text-orange-600' : 'text-red-600'
+                                        }`
+                                    }, budgetHealth.grade),
+                                    React.createElement('div', { 
+                                        className: `text-sm ${
+                                            budgetHealth.grade === 'A' ? 'text-green-700' :
+                                            budgetHealth.grade === 'B' ? 'text-blue-700' :
+                                            budgetHealth.grade === 'C' ? 'text-yellow-700' :
+                                            budgetHealth.grade === 'D' ? 'text-orange-700' : 'text-red-700'
+                                        }`
+                                    }, 'Health Score')
+                                )
+                            )
+                        ),
+                        
+                        // Status indicators and controls
+                        React.createElement('div', { className: 'mt-4' },
+                            loading && React.createElement('p', { className: 'text-sm text-blue-600 mt-1' }, '🔄 Loading data...'),
+                            error && React.createElement('p', { className: 'text-sm text-red-600 mt-1' }, '❌ ', error),
+                            Object.keys(rawData).length > 0 && React.createElement('p', { className: 'text-sm text-green-600 mt-1' }, '✅ Processing ', Object.keys(rawData).length, ' data tabs')
+                        ),
+
+                        React.createElement('div', { className: 'mt-6 flex flex-wrap items-center gap-4' },
+                            React.createElement('button', {
+                                onClick: loadData,
+                                disabled: loading,
+                                className: 'px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm'
+                            }, loading ? 'Loading...' : '🔄 Refresh Data'),
+                            React.createElement('button', {
+                                onClick: clearLogs,
+                                className: 'px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm'
+                            }, 'Clear Logs')
+                        ),
+
+                        // Logs Display
+                        logs.length > 0 && React.createElement('div', { className: 'mt-4' },
+                            React.createElement('h4', { className: 'text-sm font-medium text-gray-800 mb-2' }, 'System Logs:'),
+                            React.createElement('div', { className: 'bg-gray-900 text-green-400 p-3 rounded max-h-32 overflow-y-auto font-mono text-xs' },
+                                logs.slice(-20).map((log, index) =>
+                                    React.createElement('div', {
+                                        key: index,
+                                        className: log.type === 'error' ? 'text-red-400' : 
+                                                 log.type === 'success' ? 'text-green-400' : 
+                                                 log.type === 'warning' ? 'text-yellow-400' : 
+                                                 log.type === 'debug' ? 'text-gray-400' : 'text-blue-400'
+                                    }, `[${log.timestamp}] ${log.message}`)
+                                )
+                            )
+                        )
+                    ),
+                    
+                    // Action Required Cards
+                    actionCards.length > 0 && React.createElement('div', { className: 'bg-white rounded-lg shadow-sm p-6 mb-6' },
+                        React.createElement('h2', { className: 'text-xl font-bold text-gray-900 mb-4' }, '⚡ Action Required'),
+                        React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4' },
+                            actionCards.map((action, index) => 
+                                React.createElement('div', { 
+                                    key: index,
+                                    className: `p-4 rounded-lg border-l-4 ${
+                                        action.type === 'urgent' ? 'bg-red-50 border-red-500' :
+                                        action.type === 'warning' ? 'bg-yellow-50 border-yellow-500' :
+                                        'bg-blue-50 border-blue-500'
+                                    }`
+                                },
+                                    React.createElement('div', { className: 'font-semibold text-sm text-gray-900 mb-1' }, action.client),
+                                    React.createElement('div', { 
+                                        className: `text-sm ${
+                                            action.type === 'urgent' ? 'text-red-700' :
+                                            action.type === 'warning' ? 'text-yellow-700' :
+                                            'text-blue-700'
+                                        }`
+                                    }, action.message)
+                                )
+                            )
+                        )
+                    ),
+
+                    // Main Dashboard Content
+                    React.createElement('div', { className: 'bg-white rounded-lg shadow-sm p-6' },
+                        React.createElement('h2', { className: 'text-2xl font-bold mb-6 text-center' }, 'Budget Performance Dashboard'),
+                        dataToUse.length > 0 ? 
+                            React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' },
+                                dataToUse.map(client => {
+                                    const usagePercent = Math.min(client.used, 100);
+                                    
+                                    const getGaugeColor = (usage, pace) => {
+                                        if (usage >= 90) return 'from-red-500 to-red-600';
+                                        if (usage >= 75) return 'from-orange-500 to-orange-600'; 
+                                        if (pace < 85) return 'from-blue-500 to-blue-600';
+                                        return 'from-green-500 to-green-600';
+                                    };
+                                    
+                                    const getBorderColor = (status) => {
+                                        if (status === 'HOT') return 'border-red-300 bg-red-50';
+                                        if (status === 'COLD') return 'border-blue-300 bg-blue-50';
+                                        return 'border-green-300 bg-green-50';
+                                    };
+                                    
+                                    const pacePercent = Math.min(Math.max(client.pace, 0), 200);
+                                    const pacePosition = pacePercent / 200;
+                                    
+                                    const getPaceNeedleColor = (pace) => {
+                                        if (pace < 90) return '#3B82F6';
+                                        if (pace > 110) return '#EF4444';
+                                        return '#10B981';
+                                    };
+                                    
+                                    return React.createElement('div', { 
+                                        key: client.name,
+                                        className: `border-2 rounded-xl p-6 transition-all hover:shadow-lg ${getBorderColor(client.status)}`
+                                    },
+                                        // Client Header
+                                        React.createElement('div', { className: 'flex justify-between items-start mb-4' },
+                                            React.createElement('div', { className: 'font-bold' }, 
+                                                client.daysLeft <= 1 ? '🚨 ENDS TODAY!' :
+                                                client.daysLeft === 2 ? '⚠️ ENDS TOMORROW!' :
+                                                client.daysLeft + ' days left'
+                                            ),
+                                            React.createElement('div', { className: 'text-sm mt-1' }, 
+                                                'Need £', client.requiredDaily.toFixed(0), '/day to finish on budget'
+                                            )
+                                        ),
+                                        
+                                        // Pace Indicator
+                                        React.createElement('div', { className: 'mt-4 text-center' },
+                                            React.createElement('div', { className: `text-sm font-semibold ${getPaceColor(client.pace)}` },
+                                                'Pace: ', client.pace.toFixed(0), '%'
+                                            ),
+                                            React.createElement('div', { className: 'text-xs text-gray-500' },
+                                                client.pace > 110 ? 'Spending too fast' :
+                                                client.pace < 90 ? 'Spending too slow' :
+                                                'Perfect pace'
+                                            )
+                                        )
+                                    );
+                                })
+                            ) :
+                            React.createElement('div', { className: 'text-center py-12' },
+                                React.createElement('div', { className: 'animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4' }),
+                                React.createElement('p', { className: 'text-gray-500 text-lg' }, 'Loading budget data...')
+                            )
+                    )
+                )
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(ClientBudgetTable));
+    </script>
+</body>
+</html>.createElement('div', null,
+                                                React.createElement('h3', { className: 'font-bold text-lg text-gray-900' }, client.name),
+                                                React.createElement('div', { className: 'flex items-center mt-1' },
+                                                    React.createElement('span', { className: 'text-xs text-gray-500 mr-2' }, 'Weekly trend:'),
+                                                    React.createElement('span', { 
+                                                        className: `text-xs font-semibold ${
+                                                            client.weeklyTrend > 10 ? 'text-red-600' :
+                                                            client.weeklyTrend > 5 ? 'text-orange-600' :
+                                                            client.weeklyTrend < -10 ? 'text-blue-600' :
+                                                            client.weeklyTrend < -5 ? 'text-cyan-600' :
+                                                            'text-green-600'
+                                                        }`
+                                                    },
+                                                        client.weeklyTrend > 0 ? '↗' : client.weeklyTrend < 0 ? '↘' : '→',
+                                                        ' ',
+                                                        client.weeklyTrend > 0 ? '+' : '',
+                                                        client.weeklyTrend.toFixed(1), '%'
+                                                    )
+                                                )
+                                            ),
+                                            React.createElement('span', { 
+                                                className: `px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(client.status)}`
+                                            }, 
+                                                client.status === 'ON TRACK' ? '✅ ON TRACK' : 
+                                                client.status === 'HOT' ? '🔥 HOT' : '🧊 COLD'
+                                            )
+                                        ),
+                                        
+                                        // Sparkline
+                                        React.createElement('div', { className: 'mb-4' },
+                                            React.createElement('div', { className: 'flex justify-between items-center mb-2' },
+                                                React.createElement('span', { className: 'text-sm font-medium text-gray-600' }, 'Daily Spend Trend'),
+                                                React.createElement('span', { className: 'text-xs text-gray-500' }, 
+                                                    '£', Object.values(client.dailySpend).length > 0 ? 
+                                                    Math.max(...Object.values(client.dailySpend)).toFixed(0) : '0', ' max'
+                                                )
+                                            ),
+                                            React.createElement('div', { className: 'relative' },
+                                                React.createElement('svg', { 
+                                                    width: '100%', 
+                                                    height: '24',
+                                                    className: 'bg-gray-100 rounded'
+                                                },
+                                                    client.sparklineData.points && React.createElement('polyline', {
+                                                        fill: 'none',
+                                                        stroke: client.pace > 115 ? '#EF4444' : client.pace < 85 ? '#3B82F6' : '#10B981',
+                                                        strokeWidth: '2',
+                                                        points: client.sparklineData.points
+                                                    })
+                                                )
+                                            )
+                                        ),
+                                        
+                                        // Dual Gauges
+                                        React.createElement('div', { className: 'flex justify-center items-center gap-4 mb-6' },
+                                            // Budget Usage Gauge
+                                            React.createElement('div', { className: 'relative w-24 h-24' },
+                                                React.createElement('svg', { className: 'w-24 h-24 transform -rotate-90' },
+                                                    React.createElement('circle', {
+                                                        cx: '48', cy: '48', r: '40',
+                                                        stroke: '#e5e7eb', strokeWidth: '6', fill: 'transparent'
+                                                    }),
+                                                    React.createElement('circle', {
+                                                        cx: '48', cy: '48', r: '40', 
+                                                        stroke: 'url(#budget-gradient-' + client.name.replace(/[^a-zA-Z0-9]/g, '') + ')',
+                                                        strokeWidth: '6', fill: 'transparent',
+                                                        strokeDasharray: '251.2',
+                                                        strokeDashoffset: 251.2 * (1 - usagePercent / 100),
+                                                        strokeLinecap: 'round',
+                                                        className: 'transition-all duration-1000 ease-out'
+                                                    }),
+                                                    React.createElement('defs', null,
+                                                        React.createElement('linearGradient', {
+                                                            id: 'budget-gradient-' + client.name.replace(/[^a-zA-Z0-9]/g, ''),
+                                                            x1: '0%', y1: '0%', x2: '100%', y2: '0%'
+                                                        },
+                                                            React.createElement('stop', { offset: '0%', stopColor: getGaugeColor(client.used, client.pace).split(' ')[0].replace('from-', '') }),
+                                                            React.createElement('stop', { offset: '100%', stopColor: getGaugeColor(client.used, client.pace).split(' ')[1].replace('to-', '') })
+                                                        )
+                                                    )
+                                                ),
+                                                React.createElement('div', { className: 'absolute inset-0 flex flex-col items-center justify-center' },
+                                                    React.createElement('div', { className: `text-lg font-bold ${getUsageColor(client.used)}` }, 
+                                                        client.used.toFixed(0), '%'
+                                                    ),
+                                                    React.createElement('div', { className: 'text-xs text-gray-500' }, 'Budget')
+                                                )
+                                            ),
+                                            
+                                            // Pace Gauge
+                                            React.createElement('div', { className: 'relative w-24 h-24' },
+                                                React.createElement('svg', { className: 'w-24 h-24 transform -rotate-90' },
+                                                    React.createElement('circle', {
+                                                        cx: '48', cy: '48', r: '40',
+                                                        stroke: 'url(#pace-bg-gradient)', strokeWidth: '6', fill: 'transparent'
+                                                    }),
+                                                    React.createElement('circle', {
+                                                        cx: '48', cy: '48', r: '40', 
+                                                        stroke: getPaceNeedleColor(client.pace),
+                                                        strokeWidth: '6', fill: 'transparent',
+                                                        strokeDasharray: '251.2',
+                                                        strokeDashoffset: 251.2 * (1 - pacePosition),
+                                                        strokeLinecap: 'round',
+                                                        className: 'transition-all duration-1000 ease-out'
+                                                    }),
+                                                    React.createElement('defs', null,
+                                                        React.createElement('linearGradient', {
+                                                            id: 'pace-bg-gradient',
+                                                            x1: '0%', y1: '0%', x2: '100%', y2: '0%'
+                                                        },
+                                                            React.createElement('stop', { offset: '0%', stopColor: '#3B82F6' }),
+                                                            React.createElement('stop', { offset: '50%', stopColor: '#10B981' }),
+                                                            React.createElement('stop', { offset: '100%', stopColor: '#EF4444' })
+                                                        )
+                                                    )
+                                                ),
+                                                React.createElement('div', { className: 'absolute inset-0 flex flex-col items-center justify-center' },
+                                                    React.createElement('div', { className: `text-lg font-bold ${getPaceColor(client.pace)}` }, 
+                                                        client.pace.toFixed(0), '%'
+                                                    ),
+                                                    React.createElement('div', { className: 'text-xs text-gray-500' }, 'Pace')
+                                                )
+                                            )
+                                        ),
+                                        
+                                        // Financial Details
+                                        React.createElement('div', { className: 'space-y-3' },
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Total Spend'),
+                                                React.createElement('span', { className: 'font-bold text-lg' }, '£', client.total.toFixed(0))
+                                            ),
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Budget'),
+                                                React.createElement('span', { className: 'font-semibold' }, '£', client.budget)
+                                            ),
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Remaining'),
+                                                React.createElement('span', { className: `font-semibold ${client.remaining > 0 ? 'text-green-600' : 'text-red-600'}` }, 
+                                                    '£', client.remaining.toFixed(0)
+                                                )
+                                            ),
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Daily Budget'),
+                                                React.createElement('span', { className: 'font-semibold text-cyan-600' }, '£', client.currentDailyBudget.toFixed(0), '/day')
+                                            ),
+                                            client.currentDailyBudget > 0 && React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Budget Utilization'),
+                                                React.createElement('span', { className: `font-semibold ${getBudgetUtilizationColor(client.budgetUtilization)}` }, 
+                                                    client.budgetUtilization.toFixed(0), '%'
+                                                )
+                                            ),
+                                            React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, 'Projected Spend'),
+                                                React.createElement('span', { 
+                                                    className: `font-semibold ${client.projectedOverage > 0 ? 'text-red-600' : client.projectedOverage < -100 ? 'text-blue-600' : 'text-green-600'}`
+                                                }, '£', client.projectedSpend.toFixed(0))
+                                            ),
+                                            client.projectedOverage !== 0 && React.createElement('div', { className: 'flex justify-between items-center' },
+                                                React.createElement('span', { className: 'text-sm text-gray-600' }, client.projectedOverage > 0 ? 'Projected Over' : 'Projected Under'),
+                                                React.createElement('span', { 
+                                                    className: `font-semibold ${client.projectedOverage > 0 ? 'text-red-600' : 'text-blue-600'}`
+                                                }, client.projectedOverage > 0 ? '+' : '', '£', Math.abs(client.projectedOverage).toFixed(0))
+                                            ),
+                                            
+                                            // Platform Split
+                                            (client.google > 0 || client.facebook > 0 || client.googleDailyBudget > 0 || client.facebookDailyBudget > 0) && React.createElement('div', { className: 'border-t pt-3 mt-3' },
+                                                React.createElement('div', { className: 'text-sm font-medium text-gray-700 mb-2' }, 'Platform Split'),
+                                                React.createElement('div', { className: 'grid grid-cols-2 gap-4 text-xs' },
+                                                    React.createElement('div', null,
+                                                        React.createElement('div', { className: 'flex justify-between mb-1' },
+                                                            React.createElement('span', { className: 'text-gray-600' }, 'Google Spend'),
+                                                            React.createElement('span', { className: 'font-semibold text-orange-600' }, '£', client.google.toFixed(0))
+                                                        ),
+                                                        client.googleDailyBudget > 0 && React.createElement('div', { className: 'flex justify-between' },
+                                                            React.createElement('span', { className: 'text-gray-600' }, 'Google Budget'),
+                                                            React.createElement('span', { className: 'font-semibold text-orange-600' }, '£', client.googleDailyBudget.toFixed(0), '/day')
+                                                        )
+                                                    ),
+                                                    React.createElement('div', null,
+                                                        React.createElement('div', { className: 'flex justify-between mb-1' },
+                                                            React.createElement('span', { className: 'text-gray-600' }, 'Meta Spend'),
+                                                            React.createElement('span', { className: 'font-semibold text-purple-600' }, '£', client.facebook.toFixed(0))
+                                                        ),
+                                                        client.facebookDailyBudget > 0 && React.createElement('div', { className: 'flex justify-between' },
+                                                            React.createElement('span', { className: 'text-gray-600' }, 'Meta Budget'),
+                                                            React.createElement('span', { className: 'font-semibold text-purple-600' }, '£', client.facebookDailyBudget.toFixed(0), '/day')
+                                                        )
+                                                    )
+                                                )
+                                            )
+                                        ),
+                                        
+                                        // Progress Bar
+                                        React.createElement('div', { className: 'mt-4' },
+                                            React.createElement('div', { className: 'flex justify-between text-xs text-gray-500 mb-1' },
+                                                React.createElement('span', null, 'Days Progress'),
+                                                React.createElement('span', null, client.daysElapsed, ' / ', client.totalDays, ' days')
+                                            ),
+                                            React.createElement('div', { className: 'w-full bg-gray-200 rounded-full h-2' },
+                                                React.createElement('div', {
+                                                    className: 'bg-blue-500 h-2 rounded-full transition-all duration-1000',
+                                                    style: { width: (client.daysElapsed / client.totalDays * 100) + '%' }
+                                                })
+                                            )
+                                        ),
+                                        
+                                        // Days Left Alert
+                                        client.daysLeft <= 7 && React.createElement('div', { 
+                                            className: `mt-4 p-3 rounded-lg text-center ${
+                                                client.daysLeft <= 2 ? 'bg-red-100 text-red-800' :
+                                                client.daysLeft <= 5 ? 'bg-orange-100 text-orange-800' :
+                                                'bg-yellow-100 text-yellow-800'
+                                            }`
+                                        },
+                                            React
