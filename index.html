@@ -40,13 +40,11 @@
                 const checkRecharts = () => {
                     if (window.Recharts) {
                         setRechartsLoaded(true);
-                        console.log('Recharts loaded successfully!', Object.keys(window.Recharts));
                     } else {
-                        console.log('Recharts not yet loaded, retrying...');
-                        setTimeout(checkRecharts, 100);
+                        setTimeout(checkRecharts, 200);
                     }
                 };
-                checkRecharts();
+                setTimeout(checkRecharts, 100);
             }, []);
             const [sortBy, setSortBy] = useState('name');
             const [sortOrder, setSortOrder] = useState('asc');
@@ -370,38 +368,6 @@
                     if (data[facebookTabName]) {
                         const adsetBudgetMap = new Map();
                         
-                        // Enhanced debugging for HC-One England/Wales
-                        if (clientName === 'HC-One - England/Wales') {
-                            console.log(`🔍 === HC-ONE E/W FACEBOOK ANALYSIS ===`);
-                            console.log(`📅 Date range: ${periodStart.toDateString()} to ${periodEnd.toDateString()}`);
-                            
-                            const relevantRows = data[facebookTabName].filter(row => 
-                                row.Campaign === 'Always on Care' || row.Campaign === 'HC-One Always On Campaign'
-                            );
-                            console.log(`📊 Total relevant campaign rows found: ${relevantRows.length}`);
-                            
-                            const campaignGroups = {};
-                            relevantRows.forEach(row => {
-                                if (!campaignGroups[row.Campaign]) campaignGroups[row.Campaign] = [];
-                                campaignGroups[row.Campaign].push(row);
-                            });
-                            
-                            Object.keys(campaignGroups).forEach(campaign => {
-                                console.log(`📋 Campaign "${campaign}": ${campaignGroups[campaign].length} rows`);
-                                const adsets = [...new Set(campaignGroups[campaign].map(row => row.AdsetName))];
-                                console.log(`🎯 Adsets in "${campaign}": ${JSON.stringify(adsets)}`);
-                                
-                                adsets.forEach(adsetName => {
-                                    const adsetRows = campaignGroups[campaign].filter(row => row.AdsetName === adsetName);
-                                    const latestRow = adsetRows[adsetRows.length - 1];
-                                    console.log(`💰 Latest budget for "${adsetName}": ${latestRow.DailyBudget}`);
-                                    
-                                    const inRangeRows = adsetRows.filter(row => isDateInRange(new Date(row.Date), periodStart, periodEnd));
-                                    console.log(`📅 Rows in date range for "${adsetName}": ${inRangeRows.length}`);
-                                });
-                            });
-                        }
-                        
                         data[facebookTabName].forEach(row => {
                             const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
@@ -416,24 +382,12 @@
                                 const cleanBudget = String(rawBudget).replace(/,/g, '');
                                 const numericBudget = parseFloat(cleanBudget);
                                 
-                                // Debug logging for HC-One E/W only
-                                if (clientName === 'HC-One - England/Wales' && 
-                                    (campaign === 'Always on Care' || campaign === 'HC-One Always On Campaign')) {
-                                    console.log(`🔍 BUDGET PARSING: Campaign="${campaign}", Adset="${adsetName}", Date=${row.Date}, Raw=${rawBudget}, Clean=${cleanBudget}, Numeric=${numericBudget}`);
-                                }
-                                
                                 if (!isNaN(numericBudget)) {
                                     if (numericBudget > 100) {
                                         dailyBudget = numericBudget / 100;
                                     } else {
                                         dailyBudget = numericBudget;
                                     }
-                                }
-                                
-                                // Final budget logging for HC-One E/W only
-                                if (clientName === 'HC-One - England/Wales' && 
-                                    (campaign === 'Always on Care' || campaign === 'HC-One Always On Campaign')) {
-                                    console.log(`🔍 FINAL BUDGET: Campaign="${campaign}", Adset="${adsetName}", Final=£${dailyBudget.toFixed(2)}`);
                                 }
                             }
 
