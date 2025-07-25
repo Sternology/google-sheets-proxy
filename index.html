@@ -524,10 +524,16 @@
                                     const previousBudget = adsetBudgetMap.get(adsetKey) || 0;
                                     adsetBudgetMap.set(adsetKey, dailyBudget);
                                     
-                                    // ONLY log budget updates for HC-One E/W
+                                    // ONLY log budget updates for HC-One E/W and show what's happening
                                     if (clientName === 'HC-One - England/Wales') {
-                                        console.log(`✅ BUDGET SET: ${adsetKey} = £${dailyBudget.toFixed(2)} (was £${previousBudget.toFixed(2)})`);
+                                        console.log(`✅ BUDGET SET: ${adsetKey} = £${dailyBudget.toFixed(2)} (was £${previousBudget.toFixed(2)}) on ${row.Date}`);
                                     }
+                                }
+                            } else {
+                                // Log why rows are not matching for HC-One E/W
+                                if (clientName === 'HC-One - England/Wales' && campaign === 'Always on Care') {
+                                    const inDateRange = isDateInRange(rowDate, periodStart, periodEnd);
+                                    console.log(`❌ NOT PROCESSED: ${campaign} on ${row.Date}, InRange=${inDateRange}, Matches=${matchesCampaign}, Budget=${dailyBudget.toFixed(2)}`);
                                 }
                             }
                         });
