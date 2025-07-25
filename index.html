@@ -480,31 +480,28 @@
                     if (data[facebookTabName]) {
                         const adsetBudgetMap = new Map(); // Track unique adset budgets
                         
-                        // Add comprehensive debugging for HC-One England/Wales
+                    // Process Facebook data with TARGETED debugging
+                    const facebookTabName = `${tabPrefix} FB`;
+                    if (data[facebookTabName]) {
+                        const adsetBudgetMap = new Map(); // Track unique adset budgets
+                        
+                        // TARGETED debugging for HC-One England/Wales ONLY
                         if (clientName.includes('HC-One') && clientName.includes('England')) {
-                            console.log(`🔍 === HC-ONE E/W FACEBOOK DATA ANALYSIS ===`);
-                            console.log(`Total rows in ${facebookTabName}: ${data[facebookTabName].length}`);
+                            console.log(`🔍 === HC-ONE E/W FACEBOOK ANALYSIS ===`);
                             
-                            // Count campaigns by name
-                            const campaignCounts = {};
-                            data[facebookTabName].forEach(row => {
-                                const campaign = row.Campaign || '';
-                                campaignCounts[campaign] = (campaignCounts[campaign] || 0) + 1;
-                            });
-                            
-                            console.log(`Campaign breakdown:`, campaignCounts);
-                            console.log(`Expected campaigns: [${config.campaigns.join(', ')}]`);
-                            
-                            // Show recent data for "Always on Care"
+                            // Find "Always on Care" rows only
                             const alwaysOnCareRows = data[facebookTabName].filter(row => row.Campaign === 'Always on Care');
                             console.log(`"Always on Care" rows found: ${alwaysOnCareRows.length}`);
                             
                             if (alwaysOnCareRows.length > 0) {
-                                const recentRows = alwaysOnCareRows.slice(-5); // Last 5 rows
-                                console.log(`Last 5 "Always on Care" rows:`);
-                                recentRows.forEach(row => {
-                                    console.log(`  Date: ${row.Date}, Adset: ${row.AdsetName}, Budget: ${row.DailyBudget}`);
-                                });
+                                // Show only the LAST row (most recent)
+                                const lastRow = alwaysOnCareRows[alwaysOnCareRows.length - 1];
+                                console.log(`LAST "Always on Care" row: Date=${lastRow.Date}, Adset=${lastRow.AdsetName}, Budget=${lastRow.DailyBudget}`);
+                                
+                                // Check if this row is in date range
+                                const lastRowDate = new Date(lastRow.Date);
+                                const inRange = isDateInRange(lastRowDate, periodStart, periodEnd);
+                                console.log(`Last row in date range (${periodStart.toDateString()} to ${periodEnd.toDateString()}): ${inRange}`);
                             }
                         }
                         
@@ -513,72 +510,50 @@
                             const campaign = row.Campaign || '';
                             const adsetName = row.AdsetName || '';
                             const cost = parseFloat(row.Cost) || 0;
-                            const rawBudget = row.DailyBudget || 0; // Keep as string first for debugging
+                            const rawBudget = row.DailyBudget || 0;
                             
-                            // Enhanced budget parsing with debugging
+                            // Budget parsing
                             let dailyBudget = 0;
                             if (rawBudget) {
-                                // Convert to number first
                                 const numericBudget = parseFloat(rawBudget);
                                 
-                                // Debug logging for ALL HC-One E/W campaigns with budget > 0
-                                if (clientName.includes('HC-One') && clientName.includes('England') && numericBudget > 0) {
-                                    console.log(`🔍 PROCESSING: Date=${row.Date}, Campaign="${campaign}", Adset="${adsetName}", Raw="${rawBudget}", Numeric=${numericBudget}`);
+                                // ONLY log "Always on Care" budget conversion
+                                if (clientName.includes('HC-One') && clientName.includes('England') && 
+                                    campaign === 'Always on Care' && adsetName === 'Always On Care 2025 Q1') {
+                                    console.log(`🔍 ALWAYS ON CARE: Date=${row.Date}, Raw=${rawBudget}, Numeric=${numericBudget}`);
                                 }
                                 
-                                // FIXED: Check if the value is already in pounds or pennies
-                                // If the numeric value is greater than 100, it's likely in pennies and needs conversion
-                                // If it's less than 100, it might already be in pounds
                                 if (numericBudget > 100) {
-                                    // Value is in pennies, convert to pounds
                                     dailyBudget = numericBudget / 100;
                                 } else {
-                                    // Value might already be in pounds, use as-is
                                     dailyBudget = numericBudget;
                                 }
                                 
-                                // More debug logging for HC-One E/W
-                                if (clientName.includes('HC-One') && clientName.includes('England') && numericBudget > 0) {
-                                    console.log(`🔍 CONVERTED: £${dailyBudget.toFixed(2)} (Logic: ${numericBudget > 100 ? 'pennies÷100' : 'already pounds'})`);
+                                // ONLY log "Always on Care" final budget
+                                if (clientName.includes('HC-One') && clientName.includes('England') && 
+                                    campaign === 'Always on Care' && adsetName === 'Always On Care 2025 Q1') {
+                                    console.log(`🔍 ALWAYS ON CARE FINAL: £${dailyBudget.toFixed(2)}`);
                                 }
                             }
 
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
-                            
-                            // Debug campaign matching for HC-One E/W
-                            if (clientName.includes('HC-One') && clientName.includes('England') && dailyBudget > 0) {
-                                console.log(`🔍 MATCH CHECK: "${campaign}" matches=${matchesCampaign}, inDateRange=${isDateInRange(rowDate, periodStart, periodEnd)}`);
-                            }
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
                                 facebookSpend += cost;
                                 
-                                // Track daily spend
                                 const dateKey = row.Date;
                                 if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
                                 dailySpend[dateKey] += cost;
 
-                                // Track daily budget per adset (use latest value)
                                 if (dailyBudget > 0 && adsetName) {
                                     const adsetKey = `${campaign}_${adsetName}`;
                                     const previousBudget = adsetBudgetMap.get(adsetKey) || 0;
                                     adsetBudgetMap.set(adsetKey, dailyBudget);
                                     
-                                    // Debug logging for budget updates
+                                    // ONLY log budget updates for matched campaigns
                                     if (clientName.includes('HC-One') && clientName.includes('England')) {
-                                        console.log(`✅ BUDGET UPDATE: ${adsetKey} - Previous: £${previousBudget.toFixed(2)} → New: £${dailyBudget.toFixed(2)} (Date: ${row.Date})`);
-                                    }
-                                }
-                            } else {
-                                // Debug non-matching campaigns with budget > 0
-                                if (clientName.includes('HC-One') && clientName.includes('England') && dailyBudget > 0) {
-                                    console.log(`❌ NOT MATCHED: Campaign="${campaign}", Adset="${adsetName}", Budget=£${dailyBudget.toFixed(2)}, Date=${row.Date}`);
-                                    if (!matchesCampaign) {
-                                        console.log(`   Campaign not in expected list: [${config.campaigns.join(', ')}]`);
-                                    }
-                                    if (!isDateInRange(rowDate, periodStart, periodEnd)) {
-                                        console.log(`   Date outside range: ${periodStart} to ${periodEnd}`);
+                                        console.log(`✅ BUDGET SET: ${adsetKey} = £${dailyBudget.toFixed(2)} (was £${previousBudget.toFixed(2)})`);
                                     }
                                 }
                             }
