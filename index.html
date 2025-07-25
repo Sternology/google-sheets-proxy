@@ -176,7 +176,7 @@
         };
 
         const ClientBudgetTable = () => {
-            // Remove Recharts dependency
+            // Remove Recharts dependency - using custom SVG charts now
             const [chartsEnabled] = useState(true);
             const [sortBy, setSortBy] = useState('name');
             const [sortOrder, setSortOrder] = useState('asc');
@@ -191,7 +191,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.9.0'; // Custom SVG charts - no external dependencies
+            const VERSION = 'v2.9.1'; // Fixed rechartsLoaded reference error
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = useCallback((clientType) => {
