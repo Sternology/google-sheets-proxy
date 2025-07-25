@@ -35,7 +35,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.7.1'; // Added HC-One Facebook campaign debugging
+            const VERSION = 'v2.7.2'; // Fixed HC-One Facebook budget calculation
 
             // Get current reporting period for each client (dynamic) - moved outside component
             const getCurrentPeriod = useCallback((clientType) => {
@@ -475,7 +475,7 @@
                         googleDailyBudget = Array.from(budgetMap.values()).reduce((sum, budget) => sum + budget, 0);
                     }
 
-                    // Process Facebook data
+                    // Process Facebook data with enhanced debugging
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
                         const adsetBudgetMap = new Map(); // Track unique adset budgets
@@ -485,13 +485,38 @@
                             const campaign = row.Campaign || '';
                             const adsetName = row.AdsetName || '';
                             const cost = parseFloat(row.Cost) || 0;
-                            const rawBudget = parseFloat(row.DailyBudget) || 0;
+                            const rawBudget = row.DailyBudget || 0; // Keep as string first for debugging
                             
-                            // Convert Facebook budget from pennies to pounds (6012.00 -> £60.12)
-                            const dailyBudget = rawBudget > 0 ? rawBudget / 100 : 0;
+                            // Enhanced budget parsing with debugging
+                            let dailyBudget = 0;
+                            if (rawBudget) {
+                                // Convert to number first
+                                const numericBudget = parseFloat(rawBudget);
+                                
+                                // Debug logging for HC-One Always on Care campaign specifically
+                                if (clientName.includes('HC-One') && clientName.includes('England') && 
+                                    campaign === 'Always on Care' && adsetName === 'Always On Care 2025 Q1') {
+                                    console.log(`🔍 ALWAYS ON CARE DEBUG: Raw="${rawBudget}", Numeric=${numericBudget}, Type=${typeof rawBudget}`);
+                                }
+                                
+                                // Convert Facebook budget from pennies to pounds (divide by 100)
+                                dailyBudget = numericBudget > 0 ? numericBudget / 100 : 0;
+                                
+                                // More debug logging
+                                if (clientName.includes('HC-One') && clientName.includes('England') && 
+                                    campaign === 'Always on Care' && adsetName === 'Always On Care 2025 Q1') {
+                                    console.log(`🔍 ALWAYS ON CARE CONVERTED: £${dailyBudget.toFixed(2)}`);
+                                }
+                            }
 
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
+                            
+                            // Additional debug for campaign matching
+                            if (clientName.includes('HC-One') && clientName.includes('England') && 
+                                campaign === 'Always on Care') {
+                                console.log(`🔍 CAMPAIGN MATCH CHECK: "${campaign}" matches=${matchesCampaign}, expected=[${config.campaigns.join(', ')}]`);
+                            }
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
                                 facebookSpend += cost;
@@ -501,30 +526,27 @@
                                 if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
                                 dailySpend[dateKey] += cost;
 
-                                // Track daily budget per adset (use latest value) - now in pounds
+                                // Track daily budget per adset (use latest value)
                                 if (dailyBudget > 0 && adsetName) {
                                     const adsetKey = `${campaign}_${adsetName}`;
                                     adsetBudgetMap.set(adsetKey, dailyBudget);
                                     
-                                    // Debug logging for HC-One Facebook budget mapping
+                                    // Debug logging for all HC-One Facebook campaigns
                                     if (clientName.includes('HC-One') && clientName.includes('England')) {
-                                        console.log(`🔍 HC-One E/W FACEBOOK: Campaign="${campaign}", Adset="${adsetName}", RawBudget=${rawBudget}, ConvertedBudget=£${dailyBudget.toFixed(2)}, Matches=${matchesCampaign}`);
-                                    }
-                                    
-                                    // Debug logging for Apollo Facebook budget conversion
-                                    if (clientName === 'Apollo') {
-                                        console.log(`✅ FACEBOOK ADSET: ${adsetName} - Raw: ${rawBudget} -> Converted: £${dailyBudget.toFixed(2)}`);
+                                        console.log(`✅ HC-One E/W MATCHED: Campaign="${campaign}", Adset="${adsetName}", Raw=${rawBudget}, Converted=£${dailyBudget.toFixed(2)}`);
                                     }
                                 }
                             } else {
-                                // Debug non-matching campaigns for HC-One
+                                // Debug non-matching campaigns
                                 if (clientName.includes('HC-One') && clientName.includes('England') && dailyBudget > 0) {
-                                    console.log(`❌ HC-One E/W NOT MATCHED: Campaign="${campaign}", Adset="${adsetName}", Budget=${dailyBudget.toFixed(2)}, Expected campaigns: [${config.campaigns.join(', ')}]`);
+                                    console.log(`❌ HC-One E/W NOT MATCHED: Campaign="${campaign}", Adset="${adsetName}", Budget=£${dailyBudget.toFixed(2)}`);
+                                    console.log(`   Expected campaigns: [${config.campaigns.join(', ')}]`);
+                                    console.log(`   Campaign match check: "${campaign}" in [${config.campaigns.join(', ')}] = ${config.campaigns.includes(campaign)}`);
                                 }
                             }
                         });
 
-                        // Sum up all adset daily budgets for Facebook campaigns (now in pounds)
+                        // Sum up all adset daily budgets for Facebook campaigns
                         facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
                         
                         // Debug logging for total Facebook budget
