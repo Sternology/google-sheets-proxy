@@ -6,7 +6,7 @@
     <title>Client Budget Performance Dashboard</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
+    <script src="https://unpkg.com/recharts@2.5.0/umd/Recharts.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -23,20 +23,31 @@
         const { useState, useMemo, useEffect, useCallback } = React;
         
         // Access Recharts components from the global Recharts object
-        const { PieChart, Pie, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } = window.Recharts || {};
+        const PieChart = window.Recharts?.PieChart;
+        const Pie = window.Recharts?.Pie;
+        const LineChart = window.Recharts?.LineChart;
+        const Line = window.Recharts?.Line;
+        const XAxis = window.Recharts?.XAxis;
+        const YAxis = window.Recharts?.YAxis;
+        const CartesianGrid = window.Recharts?.CartesianGrid;
+        const ResponsiveContainer = window.Recharts?.ResponsiveContainer;
 
         const ClientBudgetTable = () => {
-            // Check if Recharts is available
-            const isRechartsAvailable = window.Recharts && Object.keys(window.Recharts).length > 0;
+            // Initialize Recharts components after a delay to ensure loading
+            const [rechartsLoaded, setRechartsLoaded] = useState(false);
             
             useEffect(() => {
-                if (!isRechartsAvailable) {
-                    console.error('Recharts not loaded. Available on window:', Object.keys(window).filter(k => k.toLowerCase().includes('chart')));
-                    console.error('Recharts object:', window.Recharts);
-                } else {
-                    console.log('Recharts loaded successfully! Available components:', Object.keys(window.Recharts));
-                }
-            }, [isRechartsAvailable]);
+                const checkRecharts = () => {
+                    if (window.Recharts) {
+                        setRechartsLoaded(true);
+                        console.log('Recharts loaded successfully!', Object.keys(window.Recharts));
+                    } else {
+                        console.log('Recharts not yet loaded, retrying...');
+                        setTimeout(checkRecharts, 100);
+                    }
+                };
+                checkRecharts();
+            }, []);
             const [sortBy, setSortBy] = useState('name');
             const [sortOrder, setSortOrder] = useState('asc');
             const [rawData, setRawData] = useState({});
@@ -533,6 +544,7 @@
                                 {loading && <p className="text-sm text-blue-600 mt-1">🔄 Loading data...</p>}
                                 {error && <p className="text-sm text-red-600 mt-1">❌ {error}</p>}
                                 {Object.keys(rawData).length > 0 && <p className="text-sm text-green-600 mt-1">✅ Processing {Object.keys(rawData).length} data tabs</p>}
+                                <p className="text-sm text-gray-600 mt-1">📊 Recharts Status: {rechartsLoaded ? '✅ Loaded' : '⏳ Loading...'}</p>
                             </div>
 
                             <div className="mt-6 flex flex-wrap items-center gap-4">
@@ -576,6 +588,29 @@
                         {/* Main Dashboard Content */}
                         <div className="bg-white rounded-lg shadow-sm p-6">
                             <h2 className="text-2xl font-bold mb-6 text-center">Budget Performance Dashboard</h2>
+                            
+                            {/* Recharts Test Section */}
+                            {rechartsLoaded && PieChart && (
+                                <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+                                    <h3 className="text-sm font-bold text-blue-800 mb-2">✅ Recharts Test (Remove this section once working)</h3>
+                                    <div className="flex justify-center">
+                                        <PieChart width={200} height={100}>
+                                            <Pie
+                                                data={[
+                                                    { name: 'Test', value: 75, fill: '#3B82F6' },
+                                                    { name: 'Rest', value: 25, fill: '#E5E7EB' }
+                                                ]}
+                                                cx={100}
+                                                cy={50}
+                                                innerRadius={30}
+                                                outerRadius={40}
+                                                dataKey="value"
+                                            />
+                                        </PieChart>
+                                    </div>
+                                </div>
+                            )}
+                            
                             {dataToUse.length > 0 ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {dataToUse.map(client => (
@@ -597,7 +632,7 @@
                                             </div>
                                             
                                             {/* Recharts Professional Gauges */}
-                                            {isRechartsAvailable ? (
+                                            {rechartsLoaded && PieChart ? (
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                                                 {/* Budget Usage Gauge */}
                                                 <div className="relative bg-white p-4 rounded-lg border border-gray-200">
@@ -875,7 +910,7 @@
                                                 )}
 
                                                 {/* Daily Spending Trend with Recharts */}
-                                                {Object.keys(client.dailySpendData || {}).length > 0 && isRechartsAvailable && (
+                                                {Object.keys(client.dailySpendData || {}).length > 0 && (
                                                     <div className="border-t pt-3 mt-3">
                                                         <div className="text-sm font-medium text-gray-700 mb-2">
                                                             <span 
@@ -885,6 +920,7 @@
                                                                 Daily Spending Trend
                                                             </span>
                                                         </div>
+                                                        {rechartsLoaded && LineChart ? (
                                                         <div className="h-16">
                                                             <ResponsiveContainer width="100%" height="100%">
                                                                 <LineChart
@@ -925,6 +961,11 @@
                                                                 </LineChart>
                                                             </ResponsiveContainer>
                                                         </div>
+                                                        ) : (
+                                                        <div className="h-16 bg-gray-100 rounded flex items-center justify-center">
+                                                            <span className="text-sm text-gray-500">Chart loading...</span>
+                                                        </div>
+                                                        )}
                                                         
                                                         {/* Legend */}
                                                         <div className="flex justify-end gap-3 text-xs mt-1">
