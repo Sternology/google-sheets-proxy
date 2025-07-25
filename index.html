@@ -636,25 +636,52 @@
                                             {/* Financial Details */}
                                             <div className="space-y-3">
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-sm text-gray-600">Total Spend</span>
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Total amount spent so far this billing period across all platforms"
+                                                    >
+                                                        Total Spend
+                                                    </span>
                                                     <span className="font-bold text-lg">£{client.total.toFixed(0)}</span>
                                                 </div>
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-sm text-gray-600">Budget</span>
-                                                    <span className="font-semibold">£{client.budget}</span>
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Target monthly budget we aim to spend for this client"
+                                                    >
+                                                        Monthly Budget
+                                                    </span>
+                                                    <span className="font-semibold">
+                                                        £{client.budget} (£{(client.budget / client.totalDays).toFixed(0)}/day)
+                                                    </span>
                                                 </div>
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-sm text-gray-600">Remaining</span>
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Amount left to spend from the monthly budget target"
+                                                    >
+                                                        Remaining
+                                                    </span>
                                                     <span className={`font-semibold ${client.remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
                                                         £{client.remaining.toFixed(0)}
                                                     </span>
                                                 </div>
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-sm text-gray-600">Daily Budget</span>
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Current daily budget limits set on the advertising platforms (Google Ads, Meta)"
+                                                    >
+                                                        Platform Daily Budget
+                                                    </span>
                                                     <span className="font-semibold text-cyan-600">£{client.currentDailyBudget.toFixed(0)}/day</span>
                                                 </div>
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-sm text-gray-600">Days Left</span>
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Number of days remaining in the current billing period"
+                                                    >
+                                                        Days Left
+                                                    </span>
                                                     <span className={`font-semibold ${
                                                         client.daysLeft <= 2 ? 'text-red-600' :
                                                         client.daysLeft <= 7 ? 'text-orange-600' : 'text-gray-700'
@@ -666,7 +693,14 @@
                                                 {/* Platform Split */}
                                                 {(client.google > 0 || client.facebook > 0) && (
                                                     <div className="border-t pt-3 mt-3">
-                                                        <div className="text-sm font-medium text-gray-700 mb-2">Platform Split</div>
+                                                        <div className="text-sm font-medium text-gray-700 mb-2">
+                                                            <span 
+                                                                className="cursor-help border-b border-dotted border-gray-400"
+                                                                title="Breakdown of spending and daily budgets across Google Ads and Meta/Facebook platforms"
+                                                            >
+                                                                Platform Split
+                                                            </span>
+                                                        </div>
                                                         <div className="grid grid-cols-2 gap-4 text-xs">
                                                             <div>
                                                                 <div className="flex justify-between mb-1">
