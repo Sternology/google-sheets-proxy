@@ -496,16 +496,24 @@
                                 // Debug logging for HC-One Always on Care campaign specifically
                                 if (clientName.includes('HC-One') && clientName.includes('England') && 
                                     campaign === 'Always on Care' && adsetName === 'Always On Care 2025 Q1') {
-                                    console.log(`🔍 ALWAYS ON CARE DEBUG: Raw="${rawBudget}", Numeric=${numericBudget}, Type=${typeof rawBudget}`);
+                                    console.log(`🔍 ALWAYS ON CARE DEBUG: Row Date=${row.Date}, Raw="${rawBudget}", Numeric=${numericBudget}, Type=${typeof rawBudget}`);
                                 }
                                 
-                                // Convert Facebook budget from pennies to pounds (divide by 100)
-                                dailyBudget = numericBudget > 0 ? numericBudget / 100 : 0;
+                                // FIXED: Check if the value is already in pounds or pennies
+                                // If the numeric value is greater than 100, it's likely in pennies and needs conversion
+                                // If it's less than 100, it might already be in pounds
+                                if (numericBudget > 100) {
+                                    // Value is in pennies, convert to pounds
+                                    dailyBudget = numericBudget / 100;
+                                } else {
+                                    // Value might already be in pounds, use as-is
+                                    dailyBudget = numericBudget;
+                                }
                                 
                                 // More debug logging
                                 if (clientName.includes('HC-One') && clientName.includes('England') && 
                                     campaign === 'Always on Care' && adsetName === 'Always On Care 2025 Q1') {
-                                    console.log(`🔍 ALWAYS ON CARE CONVERTED: £${dailyBudget.toFixed(2)}`);
+                                    console.log(`🔍 ALWAYS ON CARE CONVERTED: £${dailyBudget.toFixed(2)} (Logic: ${numericBudget > 100 ? 'pennies÷100' : 'already pounds'})`);
                                 }
                             }
 
