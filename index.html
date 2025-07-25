@@ -22,18 +22,27 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useCallback } = React;
         
-        // Try to access Recharts from window object
-        const { PieChart, Pie, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } = window.Recharts || {};
+        // Access Recharts components directly from window
+        const { PieChart, Pie, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } = {
+            PieChart: window.PieChart,
+            Pie: window.Pie,
+            LineChart: window.LineChart,
+            Line: window.Line,
+            XAxis: window.XAxis,
+            YAxis: window.YAxis,
+            CartesianGrid: window.CartesianGrid,
+            ResponsiveContainer: window.ResponsiveContainer
+        };
 
         const ClientBudgetTable = () => {
             // Check if Recharts is available
-            const isRechartsAvailable = window.Recharts && window.Recharts.PieChart;
+            const isRechartsAvailable = window.PieChart && window.LineChart;
             
             useEffect(() => {
                 if (!isRechartsAvailable) {
-                    console.error('Recharts not loaded. Available on window:', Object.keys(window).filter(k => k.toLowerCase().includes('chart')));
+                    console.error('Recharts components not loaded. Available on window:', Object.keys(window).filter(k => k.toLowerCase().includes('chart')));
                 } else {
-                    console.log('Recharts loaded successfully!');
+                    console.log('Recharts loaded successfully! Available components:', Object.keys(window).filter(k => k.includes('Chart') || k.includes('Line') || k.includes('Pie')));
                 }
             }, [isRechartsAvailable]);
             const [sortBy, setSortBy] = useState('name');
