@@ -6,21 +6,7 @@
     <title>Client Budget Performance Dashboard</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/recharts@2.5.0/umd/Recharts.js" onload="console.log('Recharts script loaded')"></script>
-    <script>
-        // Fallback loading check
-        window.addEventListener('load', function() {
-            setTimeout(() => {
-                if (!window.Recharts) {
-                    console.warn('Primary Recharts CDN failed, trying backup...');
-                    const script = document.createElement('script');
-                    script.src = 'https://cdn.jsdelivr.net/npm/recharts@2.5.0/umd/Recharts.js';
-                    script.onload = () => console.log('Backup Recharts loaded');
-                    document.head.appendChild(script);
-                }
-            }, 1000);
-        });
-    </script>
+    <script src="https://unpkg.com/recharts@2.5.0/umd/Recharts.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -51,18 +37,25 @@
             const [rechartsLoaded, setRechartsLoaded] = useState(false);
             
             useEffect(() => {
+                let attempts = 0;
+                const maxAttempts = 20;
+                
                 const checkRecharts = () => {
-                    console.log('Checking for Recharts...', !!window.Recharts, Object.keys(window).filter(k => k.includes('Recharts')));
-                    if (window.Recharts && typeof window.Recharts.PieChart !== 'undefined') {
-                        console.log('✅ Recharts fully loaded!', Object.keys(window.Recharts));
+                    attempts++;
+                    if (window.Recharts && window.Recharts.PieChart) {
                         setRechartsLoaded(true);
+                        return;
+                    }
+                    
+                    if (attempts < maxAttempts) {
+                        setTimeout(checkRecharts, 250);
                     } else {
-                        console.log('⏳ Recharts not ready, retrying...');
-                        setTimeout(checkRecharts, 300);
+                        console.warn('Recharts failed to load after maximum attempts');
                     }
                 };
-                // Wait a bit longer for the script to load
-                setTimeout(checkRecharts, 500);
+                
+                // Start checking after DOM is ready
+                setTimeout(checkRecharts, 1000);
             }, []);
             const [sortBy, setSortBy] = useState('name');
             const [sortOrder, setSortOrder] = useState('asc');
@@ -516,7 +509,7 @@
                                 {loading && <p className="text-sm text-blue-600 mt-1">🔄 Loading data...</p>}
                                 {error && <p className="text-sm text-red-600 mt-1">❌ {error}</p>}
                                 {Object.keys(rawData).length > 0 && <p className="text-sm text-green-600 mt-1">✅ Processing {Object.keys(rawData).length} data tabs</p>}
-                                <p className="text-sm text-gray-600 mt-1">📊 Recharts Status: {rechartsLoaded ? '✅ Loaded' : '⏳ Loading...'} | Debug: {typeof window !== 'undefined' && window.Recharts ? `Found ${Object.keys(window.Recharts || {}).length} components` : 'Not found'}</p>
+                                <p className="text-sm text-gray-600 mt-1">📊 Charts: {rechartsLoaded ? '✅ Enabled' : '⏳ Loading...'}</p>
                             </div>
 
                             <div className="mt-6 flex flex-wrap items-center gap-4">
