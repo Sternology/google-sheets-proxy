@@ -8,54 +8,103 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    }
+    canvas {
+      max-width: 100%;
     }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect } = React;
-
-    const waitForRecharts = () => {
-      return new Promise((resolve, reject) => {
-        let attempts = 0;
-        const interval = setInterval(() => {
-          if (window.PieChart && window.LineChart) {
-            clearInterval(interval);
-            resolve(window);
-          }
-          if (++attempts > 100) {
-            clearInterval(interval);
-            reject(new Error('Recharts failed to load after 5 seconds'));
-          }
-        }, 50);
-      });
-    };
+    const { useState, useEffect, useRef } = React;
 
     const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
     const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
     const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
 
+    const BudgetGauge = ({ percent }) => {
+      const canvasRef = useRef();
+
+      useEffect(() => {
+        const ctx = canvasRef.current.getContext('2d');
+        new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Used', 'Remaining'],
+            datasets: [{
+              data: [percent, Math.max(0, 130 - percent)],
+              backgroundColor: [
+                percent < 60 ? '#10B981' : percent < 100 ? '#F59E0B' : '#EF4444',
+                '#E5E7EB'
+              ],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            rotation: -90,
+            circumference: 180,
+            cutout: '70%',
+            plugins: { legend: { display: false }, tooltip: { enabled: false } }
+          }
+        });
+      }, [percent]);
+
+      return <canvas ref={canvasRef} width={120} height={60}></canvas>;
+    };
+
+    const SpendTrend = ({ trendData }) => {
+      const canvasRef = useRef();
+
+      useEffect(() => {
+        const ctx = canvasRef.current.getContext('2d');
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: trendData.map(d => d.day),
+            datasets: [
+              {
+                label: 'Spend',
+                data: trendData.map(d => d.spend),
+                borderColor: '#3B82F6',
+                tension: 0.4,
+                fill: false
+              },
+              {
+                label: 'Target',
+                data: trendData.map(d => d.target),
+                borderColor: '#F59E0B',
+                borderDash: [5, 5],
+                tension: 0.4,
+                fill: false
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { display: false },
+              x: { ticks: { font: { size: 10 } } }
+            }
+          }
+        });
+      }, [trendData]);
+
+      return <canvas ref={canvasRef} height={150}></canvas>;
+    };
+
     const Dashboard = () => {
       const [clients, setClients] = useState([]);
       const [loading, setLoading] = useState(true);
       const [error, setError] = useState(null);
-      const [Recharts, setRecharts] = useState(null);
 
       useEffect(() => {
-        waitForRecharts()
-          .then((lib) => setRecharts(lib))
-          .catch((err) => setError(err.message));
-      }, []);
-
-      useEffect(() => {
-        if (!Recharts) return;
-
         const fetchData = async () => {
           try {
             const clientTabs = [
@@ -104,51 +153,7 @@
         };
 
         fetchData();
-      }, [Recharts]);
-
-      if (!Recharts) return <div className="p-6">Loading Recharts library...</div>;
-
-      const { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } = Recharts;
-      const COLORS = ['#10B981', '#F59E0B', '#EF4444'];
-
-      const BudgetGauge = ({ percent }) => {
-        const clamped = Math.min(percent, 130);
-        const data = [
-          { name: 'Used', value: clamped },
-          { name: 'Remaining', value: 130 - clamped }
-        ];
-        const color = percent < 60 ? COLORS[0] : percent < 100 ? COLORS[1] : COLORS[2];
-
-        return (
-          <PieChart width={120} height={120}>
-            <Pie
-              data={data}
-              startAngle={180}
-              endAngle={0}
-              innerRadius={40}
-              outerRadius={55}
-              dataKey="value"
-            >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={index === 0 ? color : '#E5E7EB'} />
-              ))}
-            </Pie>
-          </PieChart>
-        );
-      };
-
-      const SpendTrend = ({ trendData }) => (
-        <ResponsiveContainer width="100%" height={150}>
-          <LineChart data={trendData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-            <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-            <YAxis hide />
-            <Tooltip />
-            <Line type="monotone" dataKey="spend" stroke="#3B82F6" strokeWidth={2} />
-            <Line type="monotone" dataKey="target" stroke="#F59E0B" strokeDasharray="4 4" />
-          </LineChart>
-        </ResponsiveContainer>
-      );
+      }, []);
 
       return (
         <div className="p-6 bg-gray-100 min-h-screen">
