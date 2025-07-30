@@ -1,195 +1,1003 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Client Budget Performance Dashboard</title>
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-    }
-    canvas {
-      max-width: 100%;
-    }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
-
-    const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
-    const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
-    const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-
-    const BudgetGauge = ({ percent }) => {
-      const canvasRef = useRef();
-
-      useEffect(() => {
-        const ctx = canvasRef.current.getContext('2d');
-        new Chart(ctx, {
-          type: 'doughnut',
-          data: {
-            labels: ['Used', 'Remaining'],
-            datasets: [{
-              data: [percent, Math.max(0, 130 - percent)],
-              backgroundColor: [
-                percent < 60 ? '#10B981' : percent < 100 ? '#F59E0B' : '#EF4444',
-                '#E5E7EB'
-              ],
-              borderWidth: 0
-            }]
-          },
-          options: {
-            rotation: -90,
-            circumference: 180,
-            cutout: '70%',
-            plugins: { legend: { display: false }, tooltip: { enabled: false } }
-          }
-        });
-      }, [percent]);
-
-      return <canvas ref={canvasRef} width={120} height={60}></canvas>;
-    };
-
-    const SpendTrend = ({ trendData }) => {
-      const canvasRef = useRef();
-
-      useEffect(() => {
-        const ctx = canvasRef.current.getContext('2d');
-        new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: trendData.map(d => d.day),
-            datasets: [
-              {
-                label: 'Spend',
-                data: trendData.map(d => d.spend),
-                borderColor: '#3B82F6',
-                tension: 0.4,
-                fill: false
-              },
-              {
-                label: 'Target',
-                data: trendData.map(d => d.target),
-                borderColor: '#F59E0B',
-                borderDash: [5, 5],
-                tension: 0.4,
-                fill: false
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-              y: { display: false },
-              x: { ticks: { font: { size: 10 } } }
-            }
-          }
-        });
-      }, [trendData]);
-
-      return <canvas ref={canvasRef} height={150}></canvas>;
-    };
-
-    const Dashboard = () => {
-      const [clients, setClients] = useState([]);
-      const [loading, setLoading] = useState(true);
-      const [error, setError] = useState(null);
-
-      useEffect(() => {
-        const fetchData = async () => {
-          try {
-            const clientTabs = [
-              { name: 'Apollo', tab: 'Apollo Google', budget: 1200 },
-              { name: 'HC-One', tab: 'HC1 Google', budget: 1800 }
-            ];
-
-            const responses = await Promise.all(
-              clientTabs.map(c => fetch(`${PROXY_URL}?spreadsheetId=${SPREADSHEET_ID}&range=${encodeURIComponent(`${c.tab}!A:F`)}&apiKey=${API_KEY}`))
-            );
-
-            const jsonResults = await Promise.all(responses.map(r => r.json()));
-
-            const processed = jsonResults.map((result, i) => {
-              const rows = result.values?.slice(1) || [];
-              let spend = 0;
-              const trend = {};
-
-              rows.forEach(row => {
-                const date = row[0];
-                const cost = parseFloat(row[2] || 0);
-                const day = new Date(date).getDate();
-                spend += cost;
-                if (!trend[day]) trend[day] = 0;
-                trend[day] += cost;
-              });
-
-              return {
-                name: clientTabs[i].name,
-                spend,
-                budget: clientTabs[i].budget,
-                trend: Array.from({ length: 31 }, (_, d) => ({
-                  day: d + 1,
-                  spend: trend[d + 1] || 0,
-                  target: clientTabs[i].budget / 30
-                }))
-              };
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Budget Performance Dashboard</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/recharts@2.8.0/dist/umd/Recharts.js"></script>
+    <script>
+        // Multiple CDN fallback system
+        window.rechartsLoadAttempts = 0;
+        window.loadRechartsFromCDN = function(cdnUrl) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = cdnUrl;
+                script.onload = () => {
+                    if (window.Recharts && window.Recharts.PieChart) {
+                        resolve(true);
+                    } else {
+                        reject(new Error('Recharts object not found'));
+                    }
+                };
+                script.onerror = () => reject(new Error('Script failed to load'));
+                document.head.appendChild(script);
             });
-
-            setClients(processed);
-            setLoading(false);
-          } catch (err) {
-            setError('Failed to load data');
-            setLoading(false);
-          }
         };
 
-        fetchData();
-      }, []);
+        window.tryLoadRecharts = async function() {
+            const cdns = [
+                'https://cdn.jsdelivr.net/npm/recharts@2.8.0/dist/umd/Recharts.js',
+                'https://unpkg.com/recharts@2.8.0/umd/Recharts.js',
+                'https://cdn.jsdelivr.net/npm/recharts@2.5.0/umd/Recharts.js',
+                'https://unpkg.com/recharts@2.5.0/umd/Recharts.js'
+            ];
 
-      return (
-        <div className="p-6 bg-gray-100 min-h-screen">
-          <h1 className="text-2xl font-bold mb-6">Client Budget Dashboard</h1>
-          {loading ? (
-            <p className="text-blue-500">Loading...</p>
-          ) : error ? (
-            <p className="text-red-600">{error}</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {clients.map((client, i) => {
-                const percent = (client.spend / client.budget) * 100;
-                return (
-                  <div key={i} className="bg-white p-4 rounded shadow border">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h2 className="text-lg font-bold">{client.name}</h2>
-                        <p className="text-sm text-gray-500">
-                          Spend: £{client.spend.toFixed(0)} / £{client.budget}
-                        </p>
-                      </div>
-                      <BudgetGauge percent={percent} />
-                    </div>
-                    <div className="mt-4">
-                      <SpendTrend trendData={client.trend} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      );
-    };
+            for (let i = 0; i < cdns.length; i++) {
+                try {
+                    await window.loadRechartsFromCDN(cdns[i]);
+                    console.log(`Recharts loaded successfully from CDN ${i + 1}`);
+                    return true;
+                } catch (error) {
+                    console.warn(`CDN ${i + 1} failed:`, error.message);
+                }
+            }
+            console.error('All Recharts CDNs failed to load');
+            return false;
+        };
+    </script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<Dashboard />);
-  </script>
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useCallback } = React;
+        
+        // Custom SVG Gauge Component
+        const GaugeChart = ({ value, maxValue, color, label, displayValue }) => {
+            const radius = 45;
+            const circumference = 2 * Math.PI * radius;
+            const percentage = Math.min(value / maxValue, 1);
+            const strokeDashoffset = circumference - (percentage * circumference);
+
+            return (
+                <div className="relative bg-white p-4 rounded-lg border border-gray-200">
+                    <div className="text-center mb-2">
+                        <div className="text-xs font-medium text-gray-600">{label}</div>
+                    </div>
+                    <div className="gauge-chart mx-auto">
+                        <svg className="gauge-svg" width="120" height="120">
+                            <circle
+                                cx="60"
+                                cy="60"
+                                r={radius}
+                                className="gauge-bg"
+                            />
+                            <circle
+                                cx="60"
+                                cy="60"
+                                r={radius}
+                                className="gauge-fill"
+                                style={{
+                                    stroke: color,
+                                    strokeDasharray: circumference,
+                                    strokeDashoffset: strokeDashoffset
+                                }}
+                            />
+                        </svg>
+                        <div className="gauge-text">
+                            <div className={`text-lg font-bold`} style={{ color }}>
+                                {displayValue}
+                            </div>
+                            <div className="text-xs text-gray-500">{label.split(' ')[0]}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Simple Line Chart Component
+        const SimpleLineChart = ({ data, targetValue }) => {
+            if (!data || data.length === 0) return null;
+
+            const maxValue = Math.max(...data.map(d => Math.max(d.spend, targetValue)));
+            const width = 200;
+            const height = 60;
+            const padding = 10;
+
+            const xStep = (width - 2 * padding) / (data.length - 1);
+            
+            const spendPoints = data.map((d, i) => {
+                const x = padding + i * xStep;
+                const y = height - padding - ((d.spend / maxValue) * (height - 2 * padding));
+                return `${x},${y}`;
+            }).join(' ');
+
+            const targetPoints = data.map((d, i) => {
+                const x = padding + i * xStep;
+                const y = height - padding - ((targetValue / maxValue) * (height - 2 * padding));
+                return `${x},${y}`;
+            }).join(' ');
+
+            return (
+                <div className="h-16 bg-gray-50 rounded flex items-center justify-center">
+                    <svg width={width} height={height} className="overflow-visible">
+                        {/* Grid */}
+                        <defs>
+                            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f3f4f6" strokeWidth="1"/>
+                            </pattern>
+                        </defs>
+                        <rect width="100%" height="100%" fill="url(#grid)" />
+                        
+                        {/* Target line */}
+                        <polyline
+                            points={targetPoints}
+                            fill="none"
+                            stroke="#F59E0B"
+                            strokeWidth="1"
+                            strokeDasharray="3,3"
+                        />
+                        
+                        {/* Spend line */}
+                        <polyline
+                            points={spendPoints}
+                            fill="none"
+                            stroke="#3B82F6"
+                            strokeWidth="2"
+                        />
+                        
+                        {/* Dots */}
+                        {data.map((d, i) => {
+                            const x = padding + i * xStep;
+                            const y = height - padding - ((d.spend / maxValue) * (height - 2 * padding));
+                            return (
+                                <circle
+                                    key={i}
+                                    cx={x}
+                                    cy={y}
+                                    r="2"
+                                    fill="#3B82F6"
+                                />
+                            );
+                        })}
+                    </svg>
+                </div>
+            );
+        };
+
+        const ClientBudgetTable = () => {
+            // Remove Recharts dependency - using custom SVG charts now
+            const [chartsEnabled] = useState(true);
+            const [sortBy, setSortBy] = useState('name');
+            const [sortOrder, setSortOrder] = useState('asc');
+            const [rawData, setRawData] = useState({});
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [showPlatformSplit, setShowPlatformSplit] = useState(true);
+            const [autoRefresh, setAutoRefresh] = useState(false);
+            const [logs, setLogs] = useState([]);
+
+            // Configuration
+            const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
+            const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
+            const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
+            const VERSION = 'v2.9.1'; // Fixed rechartsLoaded reference error
+
+            // Get current reporting period for each client (dynamic)
+            const getCurrentPeriod = useCallback((clientType) => {
+                const today = new Date();
+                
+                if (clientType === 'apollo') {
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const day = today.getDate();
+                    
+                    let startMonth, startYear, endMonth, endYear;
+                    
+                    if (day >= 26) {
+                        startMonth = currentMonth;
+                        startYear = currentYear;
+                        endMonth = currentMonth + 1;
+                        endYear = currentYear;
+                    } else {
+                        startMonth = currentMonth - 1;
+                        startYear = currentYear;
+                        endMonth = currentMonth;
+                        endYear = currentYear;
+                    }
+                    
+                    if (startMonth < 0) {
+                        startMonth = 11;
+                        startYear--;
+                    }
+                    if (endMonth > 11) {
+                        endMonth = 0;
+                        endYear++;
+                    }
+                    
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
+                } else if (clientType === 'hc1') {
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const day = today.getDate();
+                    
+                    let startMonth, startYear, endMonth, endYear;
+                    
+                    if (day >= 11) {
+                        startMonth = currentMonth;
+                        startYear = currentYear;
+                        endMonth = currentMonth + 1;
+                        endYear = currentYear;
+                    } else {
+                        startMonth = currentMonth - 1;
+                        startYear = currentYear;
+                        endMonth = currentMonth;
+                        endYear = currentYear;
+                    }
+                    
+                    if (startMonth < 0) {
+                        startMonth = 11;
+                        startYear--;
+                    }
+                    if (endMonth > 11) {
+                        endMonth = 0;
+                        endYear++;
+                    }
+                    
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[startMonth]} 11 - ${monthNames[endMonth]} 10`;
+                } else {
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const currentMonthName = monthNames[currentMonth];
+                    const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+                    
+                    return `${currentMonthName} 1 - ${currentMonthName} ${lastDay}`;
+                }
+            }, []);
+
+            // Get total days for the period
+            const getTotalDays = useCallback((clientType) => {
+                if (clientType === 'apollo') {
+                    return 30;
+                } else if (clientType === 'hc1') {
+                    return 30;
+                } else {
+                    const today = new Date();
+                    return new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                }
+            }, []);
+
+            // Client and campaign configuration
+            const clientConfig = useMemo(() => ({
+                'Apollo': {
+                    campaigns: ['*'],
+                    budget: 1221,
+                    period: getCurrentPeriod('apollo'),
+                    totalDays: getTotalDays('apollo'),
+                    note: 'Budget increased to £60/day each platform - showing improvement!'
+                },
+                'Cygnet Care': {
+                    campaigns: ['Care and Support Always On Performance Max', 'Care and Support Always On - Conversions 2025', 'Care and Support Always On - Traffic - 2024'],
+                    budget: 800,
+                    period: getCurrentPeriod('standard'),
+                    totalDays: getTotalDays('standard'),
+                    tabPrefix: 'Cygnet'
+                },
+                'Cygnet Nursing': {
+                    campaigns: ['Nursing always on Performance Max', 'Always On Nursing Search', 'Nursing Always on April 2024'],
+                    budget: 800,
+                    period: getCurrentPeriod('standard'),
+                    totalDays: getTotalDays('standard'),
+                    tabPrefix: 'Cygnet',
+                    skipTabs: true
+                },
+                'HC-One - England/Wales': {
+                    campaigns: [
+                        'AL -  Always on Care Search Campaign',
+                        'Always on Care',
+                        'HC-One Always On Campaign'
+                    ],
+                    budget: 1800,
+                    period: getCurrentPeriod('hc1'),
+                    totalDays: getTotalDays('hc1'),
+                    tabPrefix: 'HC1'
+                },
+                'HC-One - Scotland': {
+                    campaigns: [
+                        'AL - Scotland Always on Care Search Campaign',
+                        'Always on Care – Scotland'
+                    ],
+                    budget: 1000,
+                    period: getCurrentPeriod('hc1'),
+                    totalDays: getTotalDays('hc1'),
+                    tabPrefix: 'HC1',
+                    skipTabs: true
+                }
+            }), [getCurrentPeriod, getTotalDays]);
+
+            // Utility functions
+            const addLog = useCallback((message, type = 'info') => {
+                const timestamp = new Date().toLocaleTimeString();
+                setLogs(prev => [...prev, { message, type, timestamp }]);
+                console.log(`[${timestamp}] ${message}`);
+            }, []);
+
+            const clearLogs = useCallback(() => {
+                setLogs([]);
+            }, []);
+
+            const parseDateRange = (dateRange) => {
+                const parts = dateRange.split(' - ');
+                if (parts.length !== 2) return { start: null, end: null };
+                
+                const currentYear = new Date().getFullYear();
+                const parseDate = (dateStr) => {
+                    const [month, day] = dateStr.split(' ');
+                    const monthMap = {
+                        'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                        'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+                    };
+                    return new Date(currentYear, monthMap[month], parseInt(day));
+                };
+                
+                return {
+                    start: parseDate(parts[0]),
+                    end: parseDate(parts[1])
+                };
+            };
+
+            const isDateInRange = (date, startDate, endDate) => {
+                const checkDate = new Date(date);
+                return checkDate >= startDate && checkDate <= endDate;
+            };
+
+            // Load data from proxy
+            const loadData = async () => {
+                clearLogs();
+                addLog('Starting data load process...', 'info');
+                setLoading(true);
+                setError(null);
+
+                try {
+                    const allData = {};
+                    const expectedTabs = ['Apollo Google', 'Apollo FB', 'Cygnet Google', 'Cygnet FB', 'HC1 Google', 'HC1 FB'];
+
+                    addLog(`Expected tabs: ${expectedTabs.join(', ')}`, 'info');
+
+                    for (const tabName of expectedTabs) {
+                        try {
+                            addLog(`Fetching data from tab: ${tabName}`, 'info');
+                            
+                            const range = tabName.includes('FB') ? `${tabName}!A:E` : `${tabName}!A:F`;
+                            const url = `${PROXY_URL}?spreadsheetId=${SPREADSHEET_ID}&range=${encodeURIComponent(range)}&apiKey=${API_KEY}`;
+                            
+                            const response = await fetch(url);
+                            
+                            addLog(`Response status for ${tabName}: ${response.status}`, response.ok ? 'success' : 'error');
+                            
+                            if (response.ok) {
+                                const data = await response.json();
+                                
+                                if (data.values && data.values.length > 1) {
+                                    const headers = data.values[0];
+                                    const rows = data.values.slice(1);
+                                    
+                                    addLog(`Headers for ${tabName}: ${headers.join(', ')}`, 'info');
+                                    
+                                    const tabData = rows.map(row => {
+                                        const rowData = {};
+                                        headers.forEach((header, index) => {
+                                            if (tabName.includes('FB')) {
+                                                if (header === 'Campaign name') {
+                                                    rowData['Campaign'] = row[index] || '';
+                                                } else if (header === 'Amount spent (GBP)') {
+                                                    rowData['Cost'] = row[index] || '';
+                                                } else if (header === 'Adset name') {
+                                                    rowData['AdsetName'] = row[index] || '';
+                                                } else if (header === 'Adset daily budget') {
+                                                    rowData['DailyBudget'] = row[index] || '';
+                                                } else {
+                                                    rowData[header] = row[index] || '';
+                                                }
+                                            } else {
+                                                if (header === 'Budget Amount') {
+                                                    rowData['DailyBudget'] = row[index] || '';
+                                                } else {
+                                                    rowData[header] = row[index] || '';
+                                                }
+                                            }
+                                        });
+                                        return rowData;
+                                    });
+                                    
+                                    allData[tabName] = tabData;
+                                    addLog(`✅ Loaded ${tabData.length} rows from ${tabName}`, 'success');
+                                }
+                            }
+                        } catch (tabError) {
+                            addLog(`❌ Error fetching tab ${tabName}: ${tabError.message}`, 'error');
+                        }
+                    }
+
+                    setRawData(allData);
+                    addLog(`🎉 Data loading complete! Loaded ${Object.keys(allData).length} tabs`, 'success');
+
+                } catch (err) {
+                    setError(err.message);
+                    addLog(`💥 Fatal error: ${err.message}`, 'error');
+                } finally {
+                    setLoading(false);
+                    addLog('Load process finished', 'info');
+                }
+            };
+
+            // Process raw data into client metrics
+            const processRawData = useCallback((data) => {
+                const today = new Date();
+                const processedClients = [];
+
+                Object.keys(clientConfig).forEach(clientName => {
+                    const config = clientConfig[clientName];
+                    const tabPrefix = config.tabPrefix || clientName;
+                    const { start: periodStart, end: periodEnd } = parseDateRange(config.period);
+                    
+                    if (!periodStart || !periodEnd) return;
+
+                    const daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24)) + 1;
+                    const daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)));
+
+                    let googleSpend = 0;
+                    let facebookSpend = 0;
+                    let dailySpend = {};
+                    let googleDailyBudget = 0;
+                    let facebookDailyBudget = 0;
+
+                    // Process Google data
+                    const googleTabName = `${tabPrefix} Google`;
+                    if (data[googleTabName]) {
+                        const budgetMap = new Map();
+                        
+                        data[googleTabName].forEach(row => {
+                            const rowDate = new Date(row.Date);
+                            const campaign = row.Campaign || '';
+                            const cost = parseFloat(row.Cost) || 0;
+                            const dailyBudget = parseFloat(row.DailyBudget) || 0;
+
+                            const matchesCampaign = config.campaigns.includes('*') || 
+                                                 config.campaigns.some(c => campaign === c);
+
+                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                googleSpend += cost;
+                                
+                                const dateKey = row.Date;
+                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
+                                dailySpend[dateKey] += cost;
+
+                                if (dailyBudget > 0) {
+                                    budgetMap.set(campaign, dailyBudget);
+                                }
+                            }
+                        });
+
+                        googleDailyBudget = Array.from(budgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                    }
+
+                    // Process Facebook data
+                    const facebookTabName = `${tabPrefix} FB`;
+                    if (data[facebookTabName]) {
+                        const adsetBudgetMap = new Map();
+                        
+                        data[facebookTabName].forEach(row => {
+                            const rowDate = new Date(row.Date);
+                            const campaign = row.Campaign || '';
+                            const adsetName = row.AdsetName || '';
+                            const cost = parseFloat(row.Cost) || 0;
+                            const rawBudget = row.DailyBudget || 0;
+                            
+                            // Fixed budget parsing with proper comma handling
+                            let dailyBudget = 0;
+                            if (rawBudget) {
+                                // Remove commas first, then parse
+                                const cleanBudget = String(rawBudget).replace(/,/g, '');
+                                const numericBudget = parseFloat(cleanBudget);
+                                
+                                if (!isNaN(numericBudget)) {
+                                    if (numericBudget > 100) {
+                                        dailyBudget = numericBudget / 100;
+                                    } else {
+                                        dailyBudget = numericBudget;
+                                    }
+                                }
+                            }
+
+                            const matchesCampaign = config.campaigns.includes('*') || 
+                                                 config.campaigns.some(c => campaign === c);
+
+                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                facebookSpend += cost;
+                                
+                                const dateKey = row.Date;
+                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
+                                dailySpend[dateKey] += cost;
+
+                                if (dailyBudget > 0 && adsetName) {
+                                    const adsetKey = `${campaign}_${adsetName}`;
+                                    adsetBudgetMap.set(adsetKey, dailyBudget);
+                                }
+                            }
+                        });
+
+                        facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                    }
+
+                    // Calculate metrics
+                    const total = googleSpend + facebookSpend;
+                    const used = (total / config.budget) * 100;
+                    const remaining = config.budget - total;
+                    const currentDaily = daysElapsed > 0 ? total / daysElapsed : 0;
+                    const requiredDaily = daysLeft > 0 ? remaining / daysLeft : 0;
+                    const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
+                    const pace = requiredDaily > 0 ? (currentDailyBudget / requiredDaily) * 100 : 100;
+                    
+                    // NEW: Calculate projected spend
+                    const projectedSpend = total + (currentDailyBudget * daysLeft);
+                    const projectedOverBudget = ((projectedSpend / config.budget) - 1) * 100;
+
+                    let status = 'ON TRACK';
+                    if (pace < 90) status = 'COLD';
+                    else if (pace > 110) status = 'HOT';
+
+                    processedClients.push({
+                        name: clientName,
+                        google: googleSpend,
+                        facebook: facebookSpend,
+                        total: total,
+                        budget: config.budget,
+                        period: config.period,
+                        totalDays: config.totalDays,
+                        daysElapsed: daysElapsed,
+                        daysLeft: daysLeft,
+                        used: used,
+                        remaining: remaining,
+                        currentDaily: currentDaily,
+                        requiredDaily: requiredDaily,
+                        pace: pace,
+                        status: status,
+                        currentDailyBudget: currentDailyBudget,
+                        googleDailyBudget: googleDailyBudget,
+                        facebookDailyBudget: facebookDailyBudget,
+                        projectedSpend: projectedSpend,
+                        projectedOverBudget: projectedOverBudget,
+                        dailySpendData: dailySpend
+                    });
+                });
+
+                return processedClients;
+            }, [clientConfig]);
+
+            // Load data on mount
+            useEffect(() => {
+                loadData();
+            }, []);
+
+            const dataToUse = useMemo(() => {
+                return Object.keys(rawData).length > 0 ? processRawData(rawData) : [];
+            }, [rawData, processRawData]);
+
+            const totalSpend = dataToUse.reduce((sum, client) => sum + client.total, 0);
+            const totalDailyBudget = dataToUse.reduce((sum, client) => sum + client.currentDailyBudget, 0);
+
+            return (
+                <div className="w-full min-h-screen bg-gray-50 p-4">
+                    <div className="max-w-full mx-auto">
+                        {/* Header */}
+                        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+                            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-gray-900 mb-2">Client Budget Performance Dashboard</h1>
+                                    <p className="text-gray-600">
+                                        {Object.keys(rawData).length > 0 ? 'Data loaded from Google Sheets' : 'Loading...'} | 
+                                        Updated: {new Date().toLocaleString()} | {VERSION}
+                                    </p>
+                                </div>
+                                
+                                <div className="mt-4 lg:mt-0 grid grid-cols-2 gap-4 text-center">
+                                    <div className="bg-blue-50 p-4 rounded-lg">
+                                        <div className="text-2xl font-bold text-blue-600">£{totalSpend.toFixed(0)}</div>
+                                        <div className="text-sm text-blue-700">Total Spend</div>
+                                    </div>
+                                    <div className="bg-cyan-50 p-4 rounded-lg">
+                                        <div className="text-2xl font-bold text-cyan-600">£{totalDailyBudget.toFixed(0)}</div>
+                                        <div className="text-sm text-cyan-700">Daily Budget</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-4">
+                                {loading && <p className="text-sm text-blue-600 mt-1">🔄 Loading data...</p>}
+                                {error && <p className="text-sm text-red-600 mt-1">❌ {error}</p>}
+                                {Object.keys(rawData).length > 0 && <p className="text-sm text-green-600 mt-1">✅ Processing {Object.keys(rawData).length} data tabs</p>}
+                                <p className="text-sm text-gray-600 mt-1">📊 Charts: ✅ Ready (Custom SVG)</p>
+                            </div>
+
+                            <div className="mt-6 flex flex-wrap items-center gap-4">
+                                <button
+                                    onClick={loadData}
+                                    disabled={loading}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm"
+                                >
+                                    {loading ? 'Loading...' : '🔄 Refresh Data'}
+                                </button>
+                                <button
+                                    onClick={clearLogs}
+                                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                                >
+                                    Clear Logs
+                                </button>
+                            </div>
+
+                            {/* Logs Display */}
+                            {logs.length > 0 && (
+                                <div className="mt-4">
+                                    <h4 className="text-sm font-medium text-gray-800 mb-2">System Logs:</h4>
+                                    <div className="bg-gray-900 text-green-400 p-3 rounded max-h-32 overflow-y-auto font-mono text-xs">
+                                        {logs.slice(-20).map((log, index) => (
+                                            <div
+                                                key={index}
+                                                className={
+                                                    log.type === 'error' ? 'text-red-400' : 
+                                                    log.type === 'success' ? 'text-green-400' : 
+                                                    log.type === 'warning' ? 'text-yellow-400' : 'text-blue-400'
+                                                }
+                                            >
+                                                [{log.timestamp}] {log.message}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Main Dashboard Content */}
+                        <div className="bg-white rounded-lg shadow-sm p-6">
+                            <h2 className="text-2xl font-bold mb-6 text-center">Budget Performance Dashboard</h2>
+                            
+                            {dataToUse.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {dataToUse.map(client => (
+                                        <div key={client.name} className="border-2 rounded-xl p-6 transition-all hover:shadow-lg bg-green-50 border-green-300">
+                                            {/* Client Header */}
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <h3 className="font-bold text-lg text-gray-900">{client.name}</h3>
+                                                    <div className="text-sm text-gray-600 mt-1">{client.period}</div>
+                                                </div>
+                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                                    client.status === 'HOT' ? 'bg-red-100 text-red-800 border-red-200' :
+                                                    client.status === 'COLD' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                                                    'bg-green-100 text-green-800 border-green-200'
+                                                }`}>
+                                                    {client.status === 'ON TRACK' ? '✅ ON TRACK' : 
+                                                     client.status === 'HOT' ? '🔥 HOT' : '🧊 COLD'}
+                                                </span>
+                                            </div>
+                                            
+                                            {/* Custom SVG Gauge Charts */}
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                                {/* Budget Usage Gauge */}
+                                                <GaugeChart
+                                                    value={client.used}
+                                                    maxValue={100}
+                                                    color={client.used < 60 ? '#10B981' : client.used < 85 ? '#F59E0B' : '#EF4444'}
+                                                    label="Budget Usage"
+                                                    displayValue={`${client.used.toFixed(0)}%`}
+                                                />
+                                                
+                                                {/* Pace Gauge */}
+                                                <GaugeChart
+                                                    value={Math.min(client.pace, 150)}
+                                                    maxValue={150}
+                                                    color={client.pace < 90 ? '#3B82F6' : client.pace > 110 ? '#EF4444' : '#10B981'}
+                                                    label="Spending Pace"
+                                                    displayValue={`${client.pace.toFixed(0)}%`}
+                                                />
+
+                                                {/* Projected Spend Gauge */}
+                                                <GaugeChart
+                                                    value={Math.min((client.projectedSpend / client.budget) * 100, 130)}
+                                                    maxValue={130}
+                                                    color={client.projectedOverBudget > 10 ? '#EF4444' : 
+                                                          client.projectedOverBudget > 0 ? '#F59E0B' : 
+                                                          client.projectedOverBudget > -20 ? '#10B981' : '#3B82F6'}
+                                                    label="Projected vs Budget"
+                                                    displayValue={`£${client.projectedSpend.toFixed(0)}`}
+                                                />
+                                            </div>
+
+                                            {/* Financial Details */}
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Total amount spent so far this billing period across all platforms"
+                                                    >
+                                                        Total Spend
+                                                    </span>
+                                                    <span className="font-bold text-lg">£{client.total.toFixed(0)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Target monthly budget we aim to spend for this client"
+                                                    >
+                                                        Monthly Budget
+                                                    </span>
+                                                    <span className="font-semibold">
+                                                        £{client.budget} (£{(client.budget / client.totalDays).toFixed(0)}/day)
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Estimated final spend if current platform daily budgets remain unchanged: Current Spend + (Platform Daily Budget × Days Remaining)"
+                                                    >
+                                                        Projected Spend
+                                                    </span>
+                                                    <span className={`font-semibold ${
+                                                        client.projectedOverBudget > 5 ? 'text-red-600' :
+                                                        client.projectedOverBudget > -5 ? 'text-orange-600' : 'text-green-600'
+                                                    }`}>
+                                                        £{client.projectedSpend.toFixed(0)}
+                                                        {client.projectedOverBudget > 0 && (
+                                                            <span className="text-xs ml-1">
+                                                                (+{client.projectedOverBudget.toFixed(0)}%)
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Amount left to spend from the monthly budget target"
+                                                    >
+                                                        Remaining
+                                                    </span>
+                                                    <span className={`font-semibold ${client.remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                        £{client.remaining.toFixed(0)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Current daily budget limits set on the advertising platforms (Google Ads, Meta)"
+                                                    >
+                                                        Platform Daily Budget
+                                                    </span>
+                                                    <span className="font-semibold text-cyan-600">£{client.currentDailyBudget.toFixed(0)}/day</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Number of days remaining in the current billing period"
+                                                    >
+                                                        Days Left
+                                                    </span>
+                                                    <span className={`font-semibold ${
+                                                        client.daysLeft <= 2 ? 'text-red-600' :
+                                                        client.daysLeft <= 7 ? 'text-orange-600' : 'text-gray-700'
+                                                    }`}>
+                                                        {client.daysLeft} days
+                                                    </span>
+                                                </div>
+                                                
+                                                {/* Platform Split */}
+                                                {(client.google > 0 || client.facebook > 0) && (
+                                                    <div className="border-t pt-3 mt-3">
+                                                        <div className="text-sm font-medium text-gray-700 mb-2">
+                                                            <span 
+                                                                className="cursor-help border-b border-dotted border-gray-400"
+                                                                title="Breakdown of spending and daily budgets across Google Ads and Meta/Facebook platforms"
+                                                            >
+                                                                Platform Split
+                                                            </span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-4 text-xs">
+                                                            <div>
+                                                                <div className="flex justify-between mb-1">
+                                                                    <span className="text-gray-600">Google Spend</span>
+                                                                    <span className="font-semibold text-orange-600">£{client.google.toFixed(0)}</span>
+                                                                </div>
+                                                                {client.googleDailyBudget > 0 && (
+                                                                    <div className="flex justify-between">
+                                                                        <span className="text-gray-600">Google Budget</span>
+                                                                        <span className="font-semibold text-orange-600">£{client.googleDailyBudget.toFixed(0)}/day</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <div className="flex justify-between mb-1">
+                                                                    <span className="text-gray-600">Meta Spend</span>
+                                                                    <span className="font-semibold text-purple-600">£{client.facebook.toFixed(0)}</span>
+                                                                </div>
+                                                                {client.facebookDailyBudget > 0 && (
+                                                                    <div className="flex justify-between">
+                                                                        <span className="text-gray-600">Meta Budget</span>
+                                                                        <span className="font-semibold text-purple-600">£{client.facebookDailyBudget.toFixed(0)}/day</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Daily Spending Trend with Custom Chart */}
+                                                {Object.keys(client.dailySpendData || {}).length > 0 && (
+                                                    <div className="border-t pt-3 mt-3">
+                                                        <div className="text-sm font-medium text-gray-700 mb-2">
+                                                            <span 
+                                                                className="cursor-help border-b border-dotted border-gray-400"
+                                                                title="Daily spending trend showing actual spend vs target daily budget line"
+                                                            >
+                                                                Daily Spending Trend
+                                                            </span>
+                                                        </div>
+                                                        <SimpleLineChart
+                                                            data={
+                                                                Object.entries(client.dailySpendData || {})
+                                                                    .sort(([a], [b]) => new Date(a) - new Date(b))
+                                                                    .map(([date, spend]) => ({
+                                                                        date: new Date(date).getDate(),
+                                                                        spend: spend
+                                                                    }))
+                                                            }
+                                                            targetValue={client.budget / client.totalDays}
+                                                        />
+                                                        
+                                                        {/* Legend */}
+                                                        <div className="flex justify-end gap-3 text-xs mt-1">
+                                                            <div className="flex items-center gap-1">
+                                                                <div className="w-3 h-0.5 bg-blue-500"></div>
+                                                                <span className="text-gray-600">Daily Spend</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1">
+                                                                <div className="w-3 h-0.5 bg-yellow-500" style={{background: 'repeating-linear-gradient(to right, #F59E0B 0, #F59E0B 3px, transparent 3px, transparent 6px)'}}></div>
+                                                                <span className="text-gray-600">Target</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )} || {}).length > 0 && (
+                                                    <div className="border-t pt-3 mt-3">
+                                                        <div className="text-sm font-medium text-gray-700 mb-2">
+                                                            <span 
+                                                                className="cursor-help border-b border-dotted border-gray-400"
+                                                                title="Daily spending trend showing actual spend vs target daily budget line"
+                                                            >
+                                                                Daily Spending Trend
+                                                            </span>
+                                                        </div>
+                                                        {rechartsLoaded && LineChart ? (
+                                                        <div className="h-16">
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <LineChart
+                                                                    data={
+                                                                        Object.entries(client.dailySpendData || {})
+                                                                            .sort(([a], [b]) => new Date(a) - new Date(b))
+                                                                            .map(([date, spend]) => ({
+                                                                                date: new Date(date).getDate(),
+                                                                                spend: spend,
+                                                                                target: client.budget / client.totalDays
+                                                                            }))
+                                                                    }
+                                                                    margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+                                                                >
+                                                                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                                                                    <XAxis 
+                                                                        dataKey="date" 
+                                                                        axisLine={false}
+                                                                        tickLine={false}
+                                                                        tick={{ fontSize: 10, fill: '#9ca3af' }}
+                                                                    />
+                                                                    <YAxis hide />
+                                                                    <Line 
+                                                                        type="monotone" 
+                                                                        dataKey="target" 
+                                                                        stroke="#F59E0B" 
+                                                                        strokeWidth={1}
+                                                                        strokeDasharray="3 3"
+                                                                        dot={false}
+                                                                    />
+                                                                    <Line 
+                                                                        type="monotone" 
+                                                                        dataKey="spend" 
+                                                                        stroke="#3B82F6" 
+                                                                        strokeWidth={2}
+                                                                        dot={{ fill: '#3B82F6', strokeWidth: 0, r: 2 }}
+                                                                    />
+                                                                </LineChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                        ) : (
+                                                        <div className="h-16 bg-gray-100 rounded flex items-center justify-center">
+                                                            <span className="text-sm text-gray-500">Chart loading...</span>
+                                                        </div>
+                                                        )}
+                                                        
+                                                        {/* Legend */}
+                                                        <div className="flex justify-end gap-3 text-xs mt-1">
+                                                            <div className="flex items-center gap-1">
+                                                                <div className="w-3 h-0.5 bg-blue-500"></div>
+                                                                <span className="text-gray-600">Daily Spend</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1">
+                                                                <div className="w-3 h-0.5 bg-yellow-500" style={{background: 'repeating-linear-gradient(to right, #F59E0B 0, #F59E0B 3px, transparent 3px, transparent 6px)'}}></div>
+                                                                <span className="text-gray-600">Target</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Projection Alert */}
+                                            {client.projectedOverBudget > 5 && (
+                                                <div className="mt-4 p-3 rounded-lg text-center bg-red-100 text-red-800">
+                                                    <div className="font-bold">⚠️ PROJECTED OVERSPEND</div>
+                                                    <div className="text-sm mt-1">
+                                                        Trending {client.projectedOverBudget.toFixed(0)}% over budget
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Days Left Alert */}
+                                            {client.daysLeft <= 1 && (
+                                                <div className="mt-4 p-3 rounded-lg text-center bg-red-100 text-red-800">
+                                                    <div className="font-bold">🚨 ENDS TODAY!</div>
+                                                    <div className="text-sm mt-1">Need £{client.requiredDaily.toFixed(0)}/day to finish on budget</div>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Pace Indicator */}
+                                            <div className="mt-4 text-center">
+                                                <div className={`text-sm font-semibold ${
+                                                    client.pace < 90 ? 'text-blue-600' :
+                                                    client.pace > 110 ? 'text-red-600' : 'text-green-600'
+                                                }`}>
+                                                    Pace: {client.pace.toFixed(0)}%
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                    {client.pace > 110 ? 'Spending too fast' :
+                                                     client.pace < 90 ? 'Spending too slow' : 'Perfect pace'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-12">
+                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                                    <p className="text-gray-500 text-lg">Loading budget data...</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ClientBudgetTable />);
+    </script>
 </body>
 </html>
