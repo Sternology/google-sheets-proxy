@@ -6,53 +6,38 @@
     <title>Client Budget Performance Dashboard</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/recharts@2.8.0/dist/umd/Recharts.js"></script>
-    <script>
-        // Multiple CDN fallback system
-        window.rechartsLoadAttempts = 0;
-        window.loadRechartsFromCDN = function(cdnUrl) {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = cdnUrl;
-                script.onload = () => {
-                    if (window.Recharts && window.Recharts.PieChart) {
-                        resolve(true);
-                    } else {
-                        reject(new Error('Recharts object not found'));
-                    }
-                };
-                script.onerror = () => reject(new Error('Script failed to load'));
-                document.head.appendChild(script);
-            });
-        };
-
-        window.tryLoadRecharts = async function() {
-            const cdns = [
-                'https://cdn.jsdelivr.net/npm/recharts@2.8.0/dist/umd/Recharts.js',
-                'https://unpkg.com/recharts@2.8.0/umd/Recharts.js',
-                'https://cdn.jsdelivr.net/npm/recharts@2.5.0/umd/Recharts.js',
-                'https://unpkg.com/recharts@2.5.0/umd/Recharts.js'
-            ];
-
-            for (let i = 0; i < cdns.length; i++) {
-                try {
-                    await window.loadRechartsFromCDN(cdns[i]);
-                    console.log(`Recharts loaded successfully from CDN ${i + 1}`);
-                    return true;
-                } catch (error) {
-                    console.warn(`CDN ${i + 1} failed:`, error.message);
-                }
-            }
-            console.error('All Recharts CDNs failed to load');
-            return false;
-        };
-    </script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
             margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+        }
+        .gauge-chart {
+            position: relative;
+            width: 120px;
+            height: 120px;
+        }
+        .gauge-svg {
+            transform: rotate(-90deg);
+        }
+        .gauge-bg {
+            fill: none;
+            stroke: #f3f4f6;
+            stroke-width: 15;
+        }
+        .gauge-fill {
+            fill: none;
+            stroke-width: 15;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.5s ease;
+        }
+        .gauge-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
         }
     </style>
 </head>
@@ -176,22 +161,18 @@
         };
 
         const ClientBudgetTable = () => {
-            // Remove Recharts dependency - using custom SVG charts now
-            const [chartsEnabled] = useState(true);
             const [sortBy, setSortBy] = useState('name');
             const [sortOrder, setSortOrder] = useState('asc');
             const [rawData, setRawData] = useState({});
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
-            const [showPlatformSplit, setShowPlatformSplit] = useState(true);
-            const [autoRefresh, setAutoRefresh] = useState(false);
             const [logs, setLogs] = useState([]);
 
             // Configuration
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.9.1'; // Fixed rechartsLoaded reference error
+            const VERSION = 'v2.9.2'; // Clean version - all Recharts references removed
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = useCallback((clientType) => {
@@ -552,7 +533,7 @@
                     const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
                     const pace = requiredDaily > 0 ? (currentDailyBudget / requiredDaily) * 100 : 100;
                     
-                    // NEW: Calculate projected spend
+                    // Calculate projected spend
                     const projectedSpend = total + (currentDailyBudget * daysLeft);
                     const projectedOverBudget = ((projectedSpend / config.budget) - 1) * 100;
 
@@ -865,75 +846,6 @@
                                                             }
                                                             targetValue={client.budget / client.totalDays}
                                                         />
-                                                        
-                                                        {/* Legend */}
-                                                        <div className="flex justify-end gap-3 text-xs mt-1">
-                                                            <div className="flex items-center gap-1">
-                                                                <div className="w-3 h-0.5 bg-blue-500"></div>
-                                                                <span className="text-gray-600">Daily Spend</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <div className="w-3 h-0.5 bg-yellow-500" style={{background: 'repeating-linear-gradient(to right, #F59E0B 0, #F59E0B 3px, transparent 3px, transparent 6px)'}}></div>
-                                                                <span className="text-gray-600">Target</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )} || {}).length > 0 && (
-                                                    <div className="border-t pt-3 mt-3">
-                                                        <div className="text-sm font-medium text-gray-700 mb-2">
-                                                            <span 
-                                                                className="cursor-help border-b border-dotted border-gray-400"
-                                                                title="Daily spending trend showing actual spend vs target daily budget line"
-                                                            >
-                                                                Daily Spending Trend
-                                                            </span>
-                                                        </div>
-                                                        {rechartsLoaded && LineChart ? (
-                                                        <div className="h-16">
-                                                            <ResponsiveContainer width="100%" height="100%">
-                                                                <LineChart
-                                                                    data={
-                                                                        Object.entries(client.dailySpendData || {})
-                                                                            .sort(([a], [b]) => new Date(a) - new Date(b))
-                                                                            .map(([date, spend]) => ({
-                                                                                date: new Date(date).getDate(),
-                                                                                spend: spend,
-                                                                                target: client.budget / client.totalDays
-                                                                            }))
-                                                                    }
-                                                                    margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
-                                                                >
-                                                                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                                                                    <XAxis 
-                                                                        dataKey="date" 
-                                                                        axisLine={false}
-                                                                        tickLine={false}
-                                                                        tick={{ fontSize: 10, fill: '#9ca3af' }}
-                                                                    />
-                                                                    <YAxis hide />
-                                                                    <Line 
-                                                                        type="monotone" 
-                                                                        dataKey="target" 
-                                                                        stroke="#F59E0B" 
-                                                                        strokeWidth={1}
-                                                                        strokeDasharray="3 3"
-                                                                        dot={false}
-                                                                    />
-                                                                    <Line 
-                                                                        type="monotone" 
-                                                                        dataKey="spend" 
-                                                                        stroke="#3B82F6" 
-                                                                        strokeWidth={2}
-                                                                        dot={{ fill: '#3B82F6', strokeWidth: 0, r: 2 }}
-                                                                    />
-                                                                </LineChart>
-                                                            </ResponsiveContainer>
-                                                        </div>
-                                                        ) : (
-                                                        <div className="h-16 bg-gray-100 rounded flex items-center justify-center">
-                                                            <span className="text-sm text-gray-500">Chart loading...</span>
-                                                        </div>
-                                                        )}
                                                         
                                                         {/* Legend */}
                                                         <div className="flex justify-end gap-3 text-xs mt-1">
