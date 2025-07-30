@@ -172,7 +172,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.9.3'; // Fixed date calculation and improved pace explanation
+            const VERSION = 'v2.9.4'; // Fixed date calculation properly and changed pace to use projected spend logic
 
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = useCallback((clientType) => {
@@ -437,8 +437,8 @@
                     
                     if (!periodStart || !periodEnd) return;
 
-                    const daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24));
-                    const daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)));
+                    const daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24)) + 1;
+                    const daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)) + 1);
 
                     let googleSpend = 0;
                     let facebookSpend = 0;
@@ -537,9 +537,20 @@
                     const projectedSpend = total + (currentDailyBudget * daysLeft);
                     const projectedOverBudget = ((projectedSpend / config.budget) - 1) * 100;
 
+                    // NEW PACE LOGIC: Based on projected spend vs target budget
                     let status = 'ON TRACK';
-                    if (pace < 90) status = 'COLD';
-                    else if (pace > 110) status = 'HOT';
+                    let pacePercentage = 100; // Default to 100% for display
+                    
+                    if (projectedOverBudget > 5) {
+                        status = 'HOT';
+                        pacePercentage = Math.min(((projectedSpend / config.budget) * 100), 150);
+                    } else if (projectedOverBudget < -5) {
+                        status = 'COLD'; 
+                        pacePercentage = (projectedSpend / config.budget) * 100;
+                    } else {
+                        status = 'ON TRACK';
+                        pacePercentage = 100;
+                    }
 
                     processedClients.push({
                         name: clientName,
@@ -555,7 +566,7 @@
                         remaining: remaining,
                         currentDaily: currentDaily,
                         requiredDaily: requiredDaily,
-                        pace: pace,
+                        pace: pacePercentage,
                         status: status,
                         currentDailyBudget: currentDailyBudget,
                         googleDailyBudget: googleDailyBudget,
@@ -692,7 +703,7 @@
                                                     <div className="text-center mb-2">
                                                         <div 
                                                             className="text-xs font-medium text-gray-600 cursor-help border-b border-dotted border-gray-400"
-                                                            title="Platform Daily Budget ÷ Required Daily Spend × 100. Shows if your current platform budgets will hit your target. 100% = perfect pace, <90% = too slow, >110% = too fast"
+                                                            title="Based on projected spend vs target budget. ON TRACK = within 5% of target. HOT = >5% over budget. COLD = >5% under budget"
                                                         >
                                                             Spending Pace
                                                         </div>
@@ -711,7 +722,7 @@
                                                                 r={45}
                                                                 className="gauge-fill"
                                                                 style={{
-                                                                    stroke: client.pace < 90 ? '#3B82F6' : client.pace > 110 ? '#EF4444' : '#10B981',
+                                                                    stroke: client.status === 'COLD' ? '#3B82F6' : client.status === 'HOT' ? '#EF4444' : '#10B981',
                                                                     strokeDasharray: 2 * Math.PI * 45,
                                                                     strokeDashoffset: (2 * Math.PI * 45) - (Math.min(client.pace, 150) / 150 * (2 * Math.PI * 45))
                                                                 }}
@@ -719,12 +730,13 @@
                                                         </svg>
                                                         <div className="gauge-text">
                                                             <div className={`text-lg font-bold ${
-                                                                client.pace < 90 ? 'text-blue-600' :
-                                                                client.pace > 110 ? 'text-red-600' : 'text-green-600'
+                                                                client.status === 'COLD' ? 'text-blue-600' :
+                                                                client.status === 'HOT' ? 'text-red-600' : 'text-green-600'
                                                             }`}>
-                                                                {client.pace.toFixed(0)}%
+                                                                {client.status === 'ON TRACK' ? '✓' : 
+                                                                 client.status === 'HOT' ? '🔥' : '🧊'}
                                                             </div>
-                                                            <div className="text-xs text-gray-500">Pace</div>
+                                                            <div className="text-xs text-gray-500">{client.status}</div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -916,14 +928,15 @@
                                             {/* Pace Indicator */}
                                             <div className="mt-4 text-center">
                                                 <div className={`text-sm font-semibold ${
-                                                    client.pace < 90 ? 'text-blue-600' :
-                                                    client.pace > 110 ? 'text-red-600' : 'text-green-600'
+                                                    client.status === 'COLD' ? 'text-blue-600' :
+                                                    client.status === 'HOT' ? 'text-red-600' : 'text-green-600'
                                                 }`}>
-                                                    Pace: {client.pace.toFixed(0)}% (Daily: £{client.currentDailyBudget.toFixed(0)} vs Need: £{client.requiredDaily.toFixed(0)})
+                                                    Status: {client.status} (Projected: £{client.projectedSpend.toFixed(0)} vs Target: £{client.budget})
                                                 </div>
                                                 <div className="text-xs text-gray-500">
-                                                    {client.pace > 110 ? 'Platform budgets too high - will overspend' :
-                                                     client.pace < 90 ? 'Platform budgets too low - will underspend' : 'Platform budgets are perfect'}
+                                                    {client.status === 'HOT' ? `Projected to overspend by ${client.projectedOverBudget.toFixed(0)}%` :
+                                                     client.status === 'COLD' ? `Projected to underspend by ${Math.abs(client.projectedOverBudget).toFixed(0)}%` : 
+                                                     'Projected spend is within 5% of target'}
                                                 </div>
                                             </div>
                                         </div>
