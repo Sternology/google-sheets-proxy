@@ -602,26 +602,44 @@
                 
                 const parseDate = (dateStr) => {
                     const [month, day] = dateStr.split(' ');
-                    const monthIndex = monthMap[month]; // Fix: Define monthIndex here
+                    const monthIndex = monthMap[month];
                     
                     let year = targetYear;
                     
-                    // Handle cross-year periods (like Dec 26 - Jan 25)
+                    // Handle cross-year periods and cross-month periods
                     if (isHistorical) {
                         const [selectedYear, selectedMonthNum] = selectedMonth.split('-').map(Number);
                         
-                        // If we're in a period that crosses years
-                        if (parts[0].includes('Dec') && parts[1].includes('Jan')) {
-                            year = month === 'Dec' ? selectedYear - 1 : selectedYear;
-                        } else if (parts[0].split(' ')[0] !== parts[1].split(' ')[0]) {
-                            // Different months - check if we need to adjust year
-                            const startMonth = monthMap[parts[0].split(' ')[0]];
-                            const endMonth = monthMap[parts[1].split(' ')[0]];
-                            
-                            if (startMonth > endMonth) {
-                                // Period crosses year boundary
-                                year = month === parts[0].split(' ')[0] ? selectedYear - 1 : selectedYear;
+                        // For periods that span different months, we need to be careful about year assignment
+                        const startMonthName = parts[0].split(' ')[0];
+                        const endMonthName = parts[1].split(' ')[0];
+                        const startMonthIndex = monthMap[startMonthName];
+                        const endMonthIndex = monthMap[endMonthName];
+                        
+                        if (startMonthIndex !== endMonthIndex) {
+                            // This is a cross-month period
+                            if (month === startMonthName) {
+                                // This is the start month
+                                if (endMonthIndex < startMonthIndex) {
+                                    // End month is in next year (like Dec -> Jan)
+                                    year = selectedYear;
+                                } else {
+                                    // Normal case: start month in same year
+                                    year = selectedYear;
+                                }
+                            } else {
+                                // This is the end month  
+                                if (endMonthIndex < startMonthIndex) {
+                                    // End month is in next year (like Dec -> Jan)
+                                    year = selectedYear + 1;
+                                } else {
+                                    // Normal case: end month in same year
+                                    year = selectedYear;
+                                }
                             }
+                        } else {
+                            // Same month for start and end
+                            year = selectedYear;
                         }
                     }
                     
@@ -788,6 +806,9 @@
                         // Debug logging for historical periods
                         if (!isCurrentPeriod) {
                             addLog(`${clientName} Google: ${rowsMatched}/${rowsProcessed} rows matched, £${googleSpend.toFixed(2)} total`, 'info');
+                            if (clientName.includes('HC-One')) {
+                                addLog(`HC-One Debug - Period: ${config.period}, Sample dates in data: ${data[googleTabName].slice(0, 3).map(r => r.Date).join(', ')}`, 'info');
+                            }
                         }
                     }
 
