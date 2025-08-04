@@ -439,80 +439,9 @@
                     return `${monthNames[month]} 1 - ${monthNames[month]} ${lastDay}`;
                 }
             }, []);
+
             // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = useCallback((clientType) => {
-                const today = new Date();
-                
-                if (clientType === 'apollo') {
-                    const currentMonth = today.getMonth();
-                    const currentYear = today.getFullYear();
-                    const day = today.getDate();
-                    
-                    let startMonth, startYear, endMonth, endYear;
-                    
-                    if (day >= 26) {
-                        startMonth = currentMonth;
-                        startYear = currentYear;
-                        endMonth = currentMonth + 1;
-                        endYear = currentYear;
-                    } else {
-                        startMonth = currentMonth - 1;
-                        startYear = currentYear;
-                        endMonth = currentMonth;
-                        endYear = currentYear;
-                    }
-                    
-                    if (startMonth < 0) {
-                        startMonth = 11;
-                        startYear--;
-                    }
-                    if (endMonth > 11) {
-                        endMonth = 0;
-                        endYear++;
-                    }
-                    
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    return `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
-                } else if (clientType === 'hc1') {
-                    const currentMonth = today.getMonth();
-                    const currentYear = today.getFullYear();
-                    const day = today.getDate();
-                    
-                    let startMonth, startYear, endMonth, endYear;
-                    
-                    if (day >= 11) {
-                        startMonth = currentMonth;
-                        startYear = currentYear;
-                        endMonth = currentMonth + 1;
-                        endYear = currentYear;
-                    } else {
-                        startMonth = currentMonth - 1;
-                        startYear = currentYear;
-                        endMonth = currentMonth;
-                        endYear = currentYear;
-                    }
-                    
-                    if (startMonth < 0) {
-                        startMonth = 11;
-                        startYear--;
-                    }
-                    if (endMonth > 11) {
-                        endMonth = 0;
-                        endYear++;
-                    }
-                    
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    return `${monthNames[startMonth]} 11 - ${monthNames[endMonth]} 10`;
-                } else {
-                    const currentMonth = today.getMonth();
-                    const currentYear = today.getFullYear();
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    const currentMonthName = monthNames[currentMonth];
-                    const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
-                    
-                    return `${currentMonthName} 1 - ${currentMonthName} ${lastDay}`;
-                }
-            }, []);
                 const today = new Date();
                 
                 if (clientType === 'apollo') {
@@ -968,158 +897,6 @@
 
                 return processedClients;
             }, [clientConfig, selectedMonth]);
-                const today = new Date();
-                const processedClients = [];
-
-                Object.keys(clientConfig).forEach(clientName => {
-                    const config = clientConfig[clientName];
-                    const tabPrefix = config.tabPrefix || clientName;
-                    const { start: periodStart, end: periodEnd } = parseDateRange(config.period);
-                    
-                    if (!periodStart || !periodEnd) return;
-
-                    const daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24)) + 1;
-                    const daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)) + 1);
-
-                    let googleSpend = 0;
-                    let facebookSpend = 0;
-                    let dailySpend = {};
-                    let googleDailyBudget = 0;
-                    let facebookDailyBudget = 0;
-
-                    // Process Google data
-                    const googleTabName = `${tabPrefix} Google`;
-                    if (data[googleTabName]) {
-                        const budgetMap = new Map();
-                        
-                        data[googleTabName].forEach(row => {
-                            const rowDate = new Date(row.Date);
-                            const campaign = row.Campaign || '';
-                            const cost = parseFloat(row.Cost) || 0;
-                            const dailyBudget = parseFloat(row.DailyBudget) || 0;
-
-                            const matchesCampaign = config.campaigns.includes('*') || 
-                                                 config.campaigns.some(c => campaign === c);
-
-                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
-                                googleSpend += cost;
-                                
-                                const dateKey = row.Date;
-                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
-                                dailySpend[dateKey] += cost;
-
-                                if (dailyBudget > 0) {
-                                    budgetMap.set(campaign, dailyBudget);
-                                }
-                            }
-                        });
-
-                        googleDailyBudget = Array.from(budgetMap.values()).reduce((sum, budget) => sum + budget, 0);
-                    }
-
-                    // Process Facebook data
-                    const facebookTabName = `${tabPrefix} FB`;
-                    if (data[facebookTabName]) {
-                        const adsetBudgetMap = new Map();
-                        
-                        data[facebookTabName].forEach(row => {
-                            const rowDate = new Date(row.Date);
-                            const campaign = row.Campaign || '';
-                            const adsetName = row.AdsetName || '';
-                            const cost = parseFloat(row.Cost) || 0;
-                            const rawBudget = row.DailyBudget || 0;
-                            
-                            // Fixed budget parsing with proper comma handling
-                            let dailyBudget = 0;
-                            if (rawBudget) {
-                                // Remove commas first, then parse
-                                const cleanBudget = String(rawBudget).replace(/,/g, '');
-                                const numericBudget = parseFloat(cleanBudget);
-                                
-                                if (!isNaN(numericBudget)) {
-                                    if (numericBudget > 100) {
-                                        dailyBudget = numericBudget / 100;
-                                    } else {
-                                        dailyBudget = numericBudget;
-                                    }
-                                }
-                            }
-
-                            const matchesCampaign = config.campaigns.includes('*') || 
-                                                 config.campaigns.some(c => campaign === c);
-
-                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
-                                facebookSpend += cost;
-                                
-                                const dateKey = row.Date;
-                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
-                                dailySpend[dateKey] += cost;
-
-                                if (dailyBudget > 0 && adsetName) {
-                                    const adsetKey = `${campaign}_${adsetName}`;
-                                    adsetBudgetMap.set(adsetKey, dailyBudget);
-                                }
-                            }
-                        });
-
-                        facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
-                    }
-
-                    // Calculate metrics
-                    const total = googleSpend + facebookSpend;
-                    const used = (total / config.budget) * 100;
-                    const remaining = config.budget - total;
-                    const currentDaily = daysElapsed > 0 ? total / daysElapsed : 0;
-                    const requiredDaily = daysLeft > 0 ? remaining / daysLeft : 0;
-                    const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
-                    const pace = requiredDaily > 0 ? (currentDailyBudget / requiredDaily) * 100 : 100;
-                    
-                    // Calculate projected spend
-                    const projectedSpend = total + (currentDailyBudget * daysLeft);
-                    const projectedOverBudget = ((projectedSpend / config.budget) - 1) * 100;
-
-                    // NEW PACE LOGIC: Based on projected spend vs target budget
-                    let status = 'ON TRACK';
-                    let pacePercentage = 100; // Default to 100% for display
-                    
-                    if (projectedOverBudget > 5) {
-                        status = 'HOT';
-                        pacePercentage = Math.min(((projectedSpend / config.budget) * 100), 150);
-                    } else if (projectedOverBudget < -5) {
-                        status = 'COLD'; 
-                        pacePercentage = (projectedSpend / config.budget) * 100;
-                    } else {
-                        status = 'ON TRACK';
-                        pacePercentage = 100;
-                    }
-
-                    processedClients.push({
-                        name: clientName,
-                        google: googleSpend,
-                        facebook: facebookSpend,
-                        total: total,
-                        budget: config.budget,
-                        period: config.period,
-                        totalDays: config.totalDays,
-                        daysElapsed: daysElapsed,
-                        daysLeft: daysLeft,
-                        used: used,
-                        remaining: remaining,
-                        currentDaily: currentDaily,
-                        requiredDaily: requiredDaily,
-                        pace: pacePercentage,
-                        status: status,
-                        currentDailyBudget: currentDailyBudget,
-                        googleDailyBudget: googleDailyBudget,
-                        facebookDailyBudget: facebookDailyBudget,
-                        projectedSpend: projectedSpend,
-                        projectedOverBudget: projectedOverBudget,
-                        dailySpendData: dailySpend
-                    });
-                });
-
-                return processedClients;
-            }, [clientConfig]);
 
             // Load data on mount and when month changes
             useEffect(() => {
@@ -1431,36 +1208,6 @@
                                                         <div className="flex justify-between items-center">
                                                             <span 
                                                                 className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
-                                                                title="Estimated final spend if current platform daily budgets remain unchanged: Current Spend + (Platform Daily Budget × Days Remaining)"
-                                                            >
-                                                                Projected Spend
-                                                            </span>
-                                                            <span className={`font-semibold ${
-                                                                client.projectedOverBudget > 5 ? 'text-red-600' :
-                                                                client.projectedOverBudget > -5 ? 'text-orange-600' : 'text-green-600'
-                                                            }`}>
-                                                                £{client.projectedSpend.toFixed(0)}
-                                                                {client.projectedOverBudget > 0 && (
-                                                                    <span className="text-xs ml-1">
-                                                                        (+{client.projectedOverBudget.toFixed(0)}%)
-                                                                    </span>
-                                                                )}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex justify-between items-center">
-                                                            <span 
-                                                                className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
-                                                                title="Amount left to spend from the monthly budget target"
-                                                            >
-                                                                Remaining
-                                                            </span>
-                                                            <span className={`font-semibold ${client.remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                                £{client.remaining.toFixed(0)}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex justify-between items-center">
-                                                            <span 
-                                                                className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
                                                                 title="Current daily budget limits set on the advertising platforms (Google Ads, Meta)"
                                                             >
                                                                 Platform Daily Budget
@@ -1609,233 +1356,6 @@
                                 </div>
                             )}
                         </div>
-                                                            />
-                                                            <circle
-                                                                cx="60"
-                                                                cy="60"
-                                                                r={45}
-                                                                className="gauge-fill"
-                                                                style={{
-                                                                    stroke: client.status === 'COLD' ? '#3B82F6' : client.status === 'HOT' ? '#EF4444' : '#10B981',
-                                                                    strokeDasharray: 2 * Math.PI * 45,
-                                                                    strokeDashoffset: (2 * Math.PI * 45) - (Math.min(client.pace, 150) / 150 * (2 * Math.PI * 45))
-                                                                }}
-                                                            />
-                                                        </svg>
-                                                        <div className="gauge-text">
-                                                            <div className={`text-lg font-bold ${
-                                                                client.status === 'COLD' ? 'text-blue-600' :
-                                                                client.status === 'HOT' ? 'text-red-600' : 'text-green-600'
-                                                            }`}>
-                                                                {client.status === 'ON TRACK' ? '✓' : 
-                                                                 client.status === 'HOT' ? '🔥' : '🧊'}
-                                                            </div>
-                                                            <div className="text-xs text-gray-500">{client.status}</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Projected Spend Gauge */}
-                                                <GaugeChart
-                                                    value={Math.min((client.projectedSpend / client.budget) * 100, 130)}
-                                                    maxValue={130}
-                                                    color={client.projectedOverBudget > 10 ? '#EF4444' : 
-                                                          client.projectedOverBudget > 0 ? '#F59E0B' : 
-                                                          client.projectedOverBudget > -20 ? '#10B981' : '#3B82F6'}
-                                                    label="Projected vs Budget"
-                                                    displayValue={`£${client.projectedSpend.toFixed(0)}`}
-                                                />
-                                            </div>
-
-                                            {/* Budget Adjustment Recommendations */}
-                                            <BudgetAdjustmentCard client={client} />
-
-                                            {/* Financial Details */}
-                                            <div className="space-y-3 mt-6">
-                                                <div className="flex justify-between items-center">
-                                                    <span 
-                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
-                                                        title="Total amount spent so far this billing period across all platforms"
-                                                    >
-                                                        Total Spend
-                                                    </span>
-                                                    <span className="font-bold text-lg">£{client.total.toFixed(0)}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center">
-                                                    <span 
-                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
-                                                        title="Target monthly budget we aim to spend for this client"
-                                                    >
-                                                        Monthly Budget
-                                                    </span>
-                                                    <span className="font-semibold">
-                                                        £{client.budget} (£{(client.budget / client.totalDays).toFixed(0)}/day)
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between items-center">
-                                                    <span 
-                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
-                                                        title="Estimated final spend if current platform daily budgets remain unchanged: Current Spend + (Platform Daily Budget × Days Remaining)"
-                                                    >
-                                                        Projected Spend
-                                                    </span>
-                                                    <span className={`font-semibold ${
-                                                        client.projectedOverBudget > 5 ? 'text-red-600' :
-                                                        client.projectedOverBudget > -5 ? 'text-orange-600' : 'text-green-600'
-                                                    }`}>
-                                                        £{client.projectedSpend.toFixed(0)}
-                                                        {client.projectedOverBudget > 0 && (
-                                                            <span className="text-xs ml-1">
-                                                                (+{client.projectedOverBudget.toFixed(0)}%)
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between items-center">
-                                                    <span 
-                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
-                                                        title="Amount left to spend from the monthly budget target"
-                                                    >
-                                                        Remaining
-                                                    </span>
-                                                    <span className={`font-semibold ${client.remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                        £{client.remaining.toFixed(0)}
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between items-center">
-                                                    <span 
-                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
-                                                        title="Current daily budget limits set on the advertising platforms (Google Ads, Meta)"
-                                                    >
-                                                        Platform Daily Budget
-                                                    </span>
-                                                    <span className="font-semibold text-cyan-600">£{client.currentDailyBudget.toFixed(0)}/day</span>
-                                                </div>
-                                                <div className="flex justify-between items-center">
-                                                    <span 
-                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
-                                                        title="Number of days remaining in the current billing period"
-                                                    >
-                                                        Days Left
-                                                    </span>
-                                                    <span className={`font-semibold ${
-                                                        client.daysLeft <= 2 ? 'text-red-600' :
-                                                        client.daysLeft <= 7 ? 'text-orange-600' : 'text-gray-700'
-                                                    }`}>
-                                                        {client.daysLeft} days
-                                                    </span>
-                                                </div>
-                                                
-                                                {/* Platform Split */}
-                                                {(client.google > 0 || client.facebook > 0) && (
-                                                    <div className="border-t pt-3 mt-3">
-                                                        <div className="text-sm font-medium text-gray-700 mb-2">
-                                                            <span 
-                                                                className="cursor-help border-b border-dotted border-gray-400"
-                                                                title="Breakdown of spending and daily budgets across Google Ads and Meta/Facebook platforms"
-                                                            >
-                                                                Platform Split
-                                                            </span>
-                                                        </div>
-                                                        <div className="grid grid-cols-2 gap-4 text-xs">
-                                                            <div>
-                                                                <div className="flex justify-between mb-1">
-                                                                    <span className="text-gray-600">Google Spend</span>
-                                                                    <span className="font-semibold text-orange-600">£{client.google.toFixed(0)}</span>
-                                                                </div>
-                                                                {client.googleDailyBudget > 0 && (
-                                                                    <div className="flex justify-between">
-                                                                        <span className="text-gray-600">Google Budget</span>
-                                                                        <span className="font-semibold text-orange-600">£{client.googleDailyBudget.toFixed(0)}/day</span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                            <div>
-                                                                <div className="flex justify-between mb-1">
-                                                                    <span className="text-gray-600">Meta Spend</span>
-                                                                    <span className="font-semibold text-purple-600">£{client.facebook.toFixed(0)}</span>
-                                                                </div>
-                                                                {client.facebookDailyBudget > 0 && (
-                                                                    <div className="flex justify-between">
-                                                                        <span className="text-gray-600">Meta Budget</span>
-                                                                        <span className="font-semibold text-purple-600">£{client.facebookDailyBudget.toFixed(0)}/day</span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Daily Spending Trend with Custom Chart */}
-                                                {Object.keys(client.dailySpendData || {}).length > 0 && (
-                                                    <div className="border-t pt-3 mt-3">
-                                                        <div className="text-sm font-medium text-gray-700 mb-2">
-                                                            <span 
-                                                                className="cursor-help border-b border-dotted border-gray-400"
-                                                                title="Daily spending trend showing actual spend vs target daily budget line"
-                                                            >
-                                                                Daily Spending Trend
-                                                            </span>
-                                                        </div>
-                                                        <SimpleLineChart
-                                                            data={
-                                                                Object.entries(client.dailySpendData || {})
-                                                                    .sort(([a], [b]) => new Date(a) - new Date(b))
-                                                                    .map(([date, spend]) => ({
-                                                                        date: new Date(date).getDate(),
-                                                                        spend: spend
-                                                                    }))
-                                                            }
-                                                            targetValue={client.budget / client.totalDays}
-                                                        />
-                                                        
-                                                        {/* Legend */}
-                                                        <div className="flex justify-end gap-3 text-xs mt-1">
-                                                            <div className="flex items-center gap-1">
-                                                                <div className="w-3 h-0.5 bg-blue-500"></div>
-                                                                <span className="text-gray-600">Daily Spend</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <div className="w-3 h-0.5 bg-yellow-500" style={{background: 'repeating-linear-gradient(to right, #F59E0B 0, #F59E0B 3px, transparent 3px, transparent 6px)'}}></div>
-                                                                <span className="text-gray-600">Target</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            
-                                            {/* Days Left Alert */}
-                                            {client.daysLeft <= 1 && (
-                                                <div className="mt-4 p-3 rounded-lg text-center bg-red-100 text-red-800">
-                                                    <div className="font-bold">🚨 ENDS TODAY!</div>
-                                                    <div className="text-sm mt-1">Need £{client.requiredDaily.toFixed(0)}/day to finish on budget</div>
-                                                </div>
-                                            )}
-                                            
-                                            {/* Pace Indicator */}
-                                            <div className="mt-4 text-center">
-                                                <div className={`text-sm font-semibold ${
-                                                    client.status === 'COLD' ? 'text-blue-600' :
-                                                    client.status === 'HOT' ? 'text-red-600' : 'text-green-600'
-                                                }`}>
-                                                    Status: {client.status} (Projected: £{client.projectedSpend.toFixed(0)} vs Target: £{client.budget})
-                                                </div>
-                                                <div className="text-xs text-gray-500">
-                                                    {client.status === 'HOT' ? `Projected to overspend by ${client.projectedOverBudget.toFixed(0)}%` :
-                                                     client.status === 'COLD' ? `Projected to underspend by ${Math.abs(client.projectedOverBudget).toFixed(0)}%` : 
-                                                     'Projected spend is within 5% of target'}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-12">
-                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                                    <p className="text-gray-500 text-lg">Loading budget data...</p>
-                                </div>
-                            )}
-                        </div>
                     </div>
                 </div>
             );
@@ -1845,4 +1365,34 @@
         root.render(<ClientBudgetTable />);
     </script>
 </body>
-</html>
+</html>600 cursor-help border-b border-dotted border-gray-400"
+                                                                title="Estimated final spend if current platform daily budgets remain unchanged: Current Spend + (Platform Daily Budget × Days Remaining)"
+                                                            >
+                                                                Projected Spend
+                                                            </span>
+                                                            <span className={`font-semibold ${
+                                                                client.projectedOverBudget > 5 ? 'text-red-600' :
+                                                                client.projectedOverBudget > -5 ? 'text-orange-600' : 'text-green-600'
+                                                            }`}>
+                                                                £{client.projectedSpend.toFixed(0)}
+                                                                {client.projectedOverBudget > 0 && (
+                                                                    <span className="text-xs ml-1">
+                                                                        (+{client.projectedOverBudget.toFixed(0)}%)
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center">
+                                                            <span 
+                                                                className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                                title="Amount left to spend from the monthly budget target"
+                                                            >
+                                                                Remaining
+                                                            </span>
+                                                            <span className={`font-semibold ${client.remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                                £{client.remaining.toFixed(0)}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center">
+                                                            <span 
+                                                                className="text-sm text-gray-
