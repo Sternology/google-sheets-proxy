@@ -595,19 +595,20 @@
                     targetYear = year;
                 }
                 
+                const monthMap = {
+                    'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                    'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+                };
+                
                 const parseDate = (dateStr) => {
                     const [month, day] = dateStr.split(' ');
-                    const monthMap = {
-                        'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-                        'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-                    };
+                    const monthIndex = monthMap[month]; // Fix: Define monthIndex here
                     
                     let year = targetYear;
                     
                     // Handle cross-year periods (like Dec 26 - Jan 25)
                     if (isHistorical) {
                         const [selectedYear, selectedMonthNum] = selectedMonth.split('-').map(Number);
-                        const monthIndex = monthMap[month];
                         
                         // If we're in a period that crosses years
                         if (parts[0].includes('Dec') && parts[1].includes('Jan')) {
