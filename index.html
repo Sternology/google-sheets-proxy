@@ -586,19 +586,58 @@
                 const parts = dateRange.split(' - ');
                 if (parts.length !== 2) return { start: null, end: null };
                 
-                const currentYear = new Date().getFullYear();
+                // For historical periods, we need to be smarter about year handling
+                const isHistorical = selectedMonth !== 'current';
+                let targetYear = new Date().getFullYear();
+                
+                if (isHistorical) {
+                    const [year, month] = selectedMonth.split('-').map(Number);
+                    targetYear = year;
+                }
+                
                 const parseDate = (dateStr) => {
                     const [month, day] = dateStr.split(' ');
                     const monthMap = {
                         'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
                         'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
                     };
-                    return new Date(currentYear, monthMap[month], parseInt(day));
+                    
+                    let year = targetYear;
+                    
+                    // Handle cross-year periods (like Dec 26 - Jan 25)
+                    if (isHistorical) {
+                        const [selectedYear, selectedMonthNum] = selectedMonth.split('-').map(Number);
+                        const monthIndex = monthMap[month];
+                        
+                        // If we're in a period that crosses years
+                        if (parts[0].includes('Dec') && parts[1].includes('Jan')) {
+                            year = month === 'Dec' ? selectedYear - 1 : selectedYear;
+                        } else if (parts[0].split(' ')[0] !== parts[1].split(' ')[0]) {
+                            // Different months - check if we need to adjust year
+                            const startMonth = monthMap[parts[0].split(' ')[0]];
+                            const endMonth = monthMap[parts[1].split(' ')[0]];
+                            
+                            if (startMonth > endMonth) {
+                                // Period crosses year boundary
+                                year = month === parts[0].split(' ')[0] ? selectedYear - 1 : selectedYear;
+                            }
+                        }
+                    }
+                    
+                    return new Date(year, monthIndex, parseInt(day));
                 };
                 
+                const startDate = parseDate(parts[0]);
+                const endDate = parseDate(parts[1]);
+                
+                // Add debugging for historical periods
+                if (isHistorical) {
+                    addLog(`Historical date range: ${dateRange} -> ${startDate.toDateString()} to ${endDate.toDateString()}`, 'info');
+                }
+                
                 return {
-                    start: parseDate(parts[0]),
-                    end: parseDate(parts[1])
+                    start: startDate,
+                    end: endDate
                 };
             };
 
@@ -716,8 +755,11 @@
                     const googleTabName = `${tabPrefix} Google`;
                     if (data[googleTabName]) {
                         const budgetMap = new Map();
+                        let rowsProcessed = 0;
+                        let rowsMatched = 0;
                         
                         data[googleTabName].forEach(row => {
+                            rowsProcessed++;
                             const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
@@ -727,6 +769,7 @@
                                                  config.campaigns.some(c => campaign === c);
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                rowsMatched++;
                                 googleSpend += cost;
                                 
                                 const dateKey = row.Date;
@@ -740,13 +783,21 @@
                         });
 
                         googleDailyBudget = Array.from(budgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                        
+                        // Debug logging for historical periods
+                        if (!isCurrentPeriod) {
+                            addLog(`${clientName} Google: ${rowsMatched}/${rowsProcessed} rows matched, £${googleSpend.toFixed(2)} total`, 'info');
+                        }
                     }
 
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
                         const adsetBudgetMap = new Map();
+                        let rowsProcessed = 0;
+                        let rowsMatched = 0;
                         
                         data[facebookTabName].forEach(row => {
+                            rowsProcessed++;
                             const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
                             const adsetName = row.AdsetName || '';
@@ -771,6 +822,7 @@
                                                  config.campaigns.some(c => campaign === c);
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                rowsMatched++;
                                 facebookSpend += cost;
                                 
                                 const dateKey = row.Date;
@@ -785,6 +837,11 @@
                         });
 
                         facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                        
+                        // Debug logging for historical periods
+                        if (!isCurrentPeriod) {
+                            addLog(`${clientName} Facebook: ${rowsMatched}/${rowsProcessed} rows matched, £${facebookSpend.toFixed(2)} total`, 'info');
+                        }
                     }
 
                     const total = googleSpend + facebookSpend;
