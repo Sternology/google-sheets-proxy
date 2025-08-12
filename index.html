@@ -479,9 +479,7 @@
                     
                     // Log the calculated period for debugging
                     const periodString = `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
-                    if (clientType === 'apollo') {
-                        console.log(`🔍 Apollo Period Calculation: Today is ${today.toDateString()}, Period: ${periodString}`);
-                    }
+                    console.log(`🔍 Apollo Period Calculation: Today is ${today.toDateString()}, Period: ${periodString}`);
                     
                     return periodString;
                 } else if (clientType === 'hc1') {
