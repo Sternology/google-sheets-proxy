@@ -378,7 +378,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.15.0'; // Fixed Apollo campaign filter - removed wildcard that was including wrong campaigns
+            const VERSION = 'v2.16.0'; // Updated Apollo with specific campaign names for Google and Facebook
 
             const getAvailableMonths = useCallback(() => {
                 const currentDate = new Date();
@@ -481,11 +481,14 @@
 
             const clientConfig = useMemo(() => ({
                 'Apollo': {
-                    campaigns: ['Apollo'], // Changed from '*' to specific campaign name
+                    campaigns: [
+                        'Always on HCA & Support Works National Search',  // Google campaign
+                        'North West Conversions Campaign April 30th'       // Facebook campaign
+                    ],
                     budget: 1221,
                     period: getCurrentPeriod('apollo'),
                     totalDays: getTotalDays('apollo'),
-                    note: 'Budget increased to £60/day each platform - NOTE: Update campaign name if needed!'
+                    note: 'Budget increased to £60/day each platform'
                 },
                 'Cygnet Care': {
                     campaigns: ['Care and Support Always On Performance Max', 'Care and Support Always On - Conversions 2025', 'Care and Support Always On - Traffic - 2024'],
