@@ -90,78 +90,11 @@
             );
         };
 
-        // Simple Line Chart Component
-        const SimpleLineChart = ({ data, targetValue }) => {
-            if (!data || data.length === 0) return null;
-
-            const maxValue = Math.max(...data.map(d => Math.max(d.spend, targetValue)));
-            const width = 200;
-            const height = 60;
-            const padding = 10;
-
-            const xStep = (width - 2 * padding) / (data.length - 1);
-            
-            const spendPoints = data.map((d, i) => {
-                const x = padding + i * xStep;
-                const y = height - padding - ((d.spend / maxValue) * (height - 2 * padding));
-                return `${x},${y}`;
-            }).join(' ');
-
-            const targetPoints = data.map((d, i) => {
-                const x = padding + i * xStep;
-                const y = height - padding - ((targetValue / maxValue) * (height - 2 * padding));
-                return `${x},${y}`;
-            }).join(' ');
-
-            return (
-                <div className="h-16 bg-gray-50 rounded flex items-center justify-center">
-                    <svg width={width} height={height} className="overflow-visible">
-                        <defs>
-                            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f3f4f6" strokeWidth="1"/>
-                            </pattern>
-                        </defs>
-                        <rect width="100%" height="100%" fill="url(#grid)" />
-                        
-                        <polyline
-                            points={targetPoints}
-                            fill="none"
-                            stroke="#F59E0B"
-                            strokeWidth="1"
-                            strokeDasharray="3,3"
-                        />
-                        
-                        <polyline
-                            points={spendPoints}
-                            fill="none"
-                            stroke="#3B82F6"
-                            strokeWidth="2"
-                        />
-                        
-                        {data.map((d, i) => {
-                            const x = padding + i * xStep;
-                            const y = height - padding - ((d.spend / maxValue) * (height - 2 * padding));
-                            return (
-                                <circle
-                                    key={i}
-                                    cx={x}
-                                    cy={y}
-                                    r="2"
-                                    fill="#3B82F6"
-                                />
-                            );
-                        })}
-                    </svg>
-                </div>
-            );
-        };
-
         // Budget Adjustment Recommendation Component
         const BudgetAdjustmentCard = ({ client }) => {
             const calculateTargetDailyBudget = () => {
                 if (client.daysLeft <= 0) return { recommended: 0, change: 0, message: "Period ended" };
                 
-                // If already at or over budget, recommend pausing or minimal spend
                 if (client.total >= client.budget) {
                     return {
                         recommended: 0,
@@ -372,36 +305,12 @@
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
             const [logs, setLogs] = useState([]);
-            const [selectedMonth, setSelectedMonth] = useState('current');
 
             // Configuration
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
             const VERSION = 'v2.17.0'; // Fixed Google data deduplication for Apollo
-
-            const getAvailableMonths = useCallback(() => {
-                const currentDate = new Date();
-                const currentYear = currentDate.getFullYear();
-                const currentMonth = currentDate.getMonth();
-                
-                const months = [
-                    { value: 'current', label: 'Current Period', isCurrent: true }
-                ];
-                
-                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                                 'July', 'August', 'September', 'October', 'November', 'December'];
-                
-                for (let i = 0; i <= currentMonth; i++) {
-                    months.push({
-                        value: `${currentYear}-${String(i + 1).padStart(2, '0')}`,
-                        label: `${monthNames[i]} ${currentYear}`,
-                        isCurrent: false
-                    });
-                }
-                
-                return months.reverse();
-            }, []);
 
             const getCurrentPeriod = useCallback((clientType) => {
                 const today = new Date();
@@ -416,7 +325,6 @@
                     let endYear = currentYear;
                     
                     if (day >= 26) {
-                        // We're after the 26th, so period is from this month's 26th to next month's 25th
                         startMonth = currentMonth;
                         endMonth = currentMonth + 1;
                         if (endMonth > 11) {
@@ -424,7 +332,6 @@
                             endYear = currentYear + 1;
                         }
                     } else {
-                        // We're before the 26th, so period is from last month's 26th to this month's 25th
                         startMonth = currentMonth - 1;
                         endMonth = currentMonth;
                         if (startMonth < 0) {
@@ -434,12 +341,7 @@
                     }
                     
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    
-                    const periodString = `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
-                    console.log(`🔍 Apollo Period Calculation: Today is ${today.toDateString()}, Period: ${periodString}`);
-                    console.log(`🔍 Apollo Period Years: Start Year: ${startYear}, End Year: ${endYear}`);
-                    
-                    return periodString;
+                    return `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
                 } else if (clientType === 'hc1') {
                     const currentMonth = today.getMonth();
                     const day = today.getDate();
@@ -482,13 +384,12 @@
             const clientConfig = useMemo(() => ({
                 'Apollo': {
                     campaigns: [
-                        'Always on HCA & Support Works National Search',  // Google campaign
-                        'North West Conversions Campaign April 30th'       // Facebook campaign
+                        'Always on HCA & Support Works National Search',
+                        'North West Conversions Campaign April 30th'
                     ],
                     budget: 1221,
                     period: getCurrentPeriod('apollo'),
-                    totalDays: getTotalDays('apollo'),
-                    note: 'Budget increased to £60/day each platform'
+                    totalDays: getTotalDays('apollo')
                 },
                 'Cygnet Care': {
                     campaigns: ['Care and Support Always On Performance Max', 'Care and Support Always On - Conversions 2025', 'Care and Support Always On - Traffic - 2024'],
@@ -553,7 +454,6 @@
                     'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
                 };
                 
-                // Parse the start and end month/day from the period string
                 const [startMonthName, startDayStr] = parts[0].trim().split(' ');
                 const [endMonthName, endDayStr] = parts[1].trim().split(' ');
                 
@@ -565,13 +465,8 @@
                 let startYear = currentYear;
                 let endYear = currentYear;
                 
-                // Special handling for Apollo billing (26th to 25th)
                 if (startDay === 26 && endDay === 25) {
-                    // Today is Aug 12, 2025
-                    // Current period should be Jul 26, 2025 - Aug 25, 2025
                     if (currentDay >= 26) {
-                        // We're after the 26th of current month
-                        // Period is from this month's 26th to next month's 25th
                         if (startMonthIndex === currentMonth) {
                             startYear = currentYear;
                             if (endMonthIndex < startMonthIndex) {
@@ -581,8 +476,6 @@
                             }
                         }
                     } else {
-                        // We're before the 26th of current month (like Aug 12)
-                        // Period is from last month's 26th to this month's 25th
                         if (endMonthIndex === currentMonth) {
                             endYear = currentYear;
                             if (startMonthIndex > endMonthIndex) {
@@ -593,7 +486,6 @@
                         }
                     }
                 } else if (startDay === 11 && endDay === 10) {
-                    // HC-One billing (11th to 10th)
                     if (currentDay >= 11) {
                         if (startMonthIndex === currentMonth) {
                             startYear = currentYear;
@@ -610,18 +502,11 @@
                 const startDate = new Date(startYear, startMonthIndex, startDay);
                 const endDate = new Date(endYear, endMonthIndex, endDay);
                 
-                console.log(`🔍 Period Date Range: ${dateRange}`);
-                console.log(`🔍 Parsed Dates: ${startDate.toDateString()} to ${endDate.toDateString()}`);
-                console.log(`🔍 Today: ${today.toDateString()}`);
-                
                 return { start: startDate, end: endDate };
             };
 
             const isDateInRange = (date, startDate, endDate) => {
-                // Parse the date string to ensure consistency
                 const checkDate = new Date(date);
-                
-                // Set all dates to midnight for consistent comparison
                 const normalizedCheck = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate());
                 const normalizedStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
                 const normalizedEnd = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
@@ -676,3 +561,106 @@
                                                 } else {
                                                     rowData[header] = row[index] || '';
                                                 }
+                                            }
+                                        });
+                                        return rowData;
+                                    });
+                                    
+                                    allData[tabName] = tabData;
+                                    addLog(`✅ Loaded ${tabData.length} rows from ${tabName}`, 'success');
+                                }
+                            }
+                        } catch (tabError) {
+                            addLog(`❌ Error fetching tab ${tabName}: ${tabError.message}`, 'error');
+                        }
+                    }
+
+                    setRawData(allData);
+                    addLog(`🎉 Data loading complete! Loaded ${Object.keys(allData).length} tabs`, 'success');
+
+                } catch (err) {
+                    setError(err.message);
+                    addLog(`💥 Fatal error: ${err.message}`, 'error');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const processRawData = useCallback((data) => {
+                const today = new Date();
+                const processedClients = [];
+
+                Object.keys(clientConfig).forEach(clientName => {
+                    const config = clientConfig[clientName];
+                    const tabPrefix = config.tabPrefix || clientName;
+                    const { start: periodStart, end: periodEnd } = parseDateRange(config.period);
+                    
+                    if (!periodStart || !periodEnd) return;
+
+                    const daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24)) + 1;
+                    const daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)) + 1);
+
+                    let googleSpend = 0;
+                    let facebookSpend = 0;
+                    let dailySpend = {};
+                    let googleDailyBudget = 0;
+                    let facebookDailyBudget = 0;
+
+                    // Process Google data with deduplication
+                    const googleTabName = `${tabPrefix} Google`;
+                    if (data[googleTabName]) {
+                        let rowsMatched = 0;
+                        let rowsBeforeDedup = 0;
+                        let latestDate = null;
+                        let latestDateBudget = 0;
+                        
+                        const filteredRows = [];
+                        const seenKeys = new Set();
+                        
+                        data[googleTabName].forEach(row => {
+                            const campaign = row.Campaign || '';
+                            const cost = parseFloat(row.Cost) || 0;
+                            const dailyBudget = parseFloat(row.DailyBudget) || 0;
+
+                            const matchesCampaign = config.campaigns.includes('*') || 
+                                                 config.campaigns.some(c => campaign === c);
+
+                            if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
+                                rowsBeforeDedup++;
+                                
+                                const uniqueKey = `${row.Date}-${campaign}`;
+                                
+                                if (!seenKeys.has(uniqueKey)) {
+                                    seenKeys.add(uniqueKey);
+                                    filteredRows.push(row);
+                                    rowsMatched++;
+                                    googleSpend += cost;
+                                    
+                                    const dateKey = row.Date;
+                                    if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
+                                    dailySpend[dateKey] += cost;
+
+                                    const rowDate = new Date(row.Date);
+                                    if (!latestDate || rowDate > latestDate) {
+                                        latestDate = rowDate;
+                                        latestDateBudget = 0;
+                                    }
+                                    
+                                    if (rowDate.getTime() === latestDate.getTime() && dailyBudget > 0) {
+                                        if (clientName === 'Apollo') {
+                                            latestDateBudget = dailyBudget;
+                                        } else {
+                                            latestDateBudget = Math.max(latestDateBudget, dailyBudget);
+                                        }
+                                    }
+                                }
+                            }
+                        });
+
+                        googleDailyBudget = latestDateBudget;
+                        
+                        if (clientName === 'Apollo') {
+                            addLog(`🔍 APOLLO Google BEFORE dedup: ${rowsBeforeDedup} rows found`, 'info');
+                            addLog(`🔍 APOLLO Google AFTER dedup: ${rowsMatched} unique rows, £${googleSpend.toFixed(2)} spend, £${googleDailyBudget.toFixed(2)} daily budget`, 'info');
+                            
+                            const uniqueDates = [...new Set(filteredRows.
