@@ -81,6 +81,72 @@
             );
         };
 
+        // Simple Line Chart Component
+        const SimpleLineChart = ({ data, targetValue }) => {
+            if (!data || data.length === 0) return null;
+
+            const maxValue = Math.max(...data.map(d => Math.max(d.spend, targetValue)));
+            const width = 200;
+            const height = 60;
+            const padding = 10;
+
+            const xStep = (width - 2 * padding) / (data.length - 1);
+            
+            const spendPoints = data.map((d, i) => {
+                const x = padding + i * xStep;
+                const y = height - padding - ((d.spend / maxValue) * (height - 2 * padding));
+                return `${x},${y}`;
+            }).join(' ');
+
+            const targetPoints = data.map((d, i) => {
+                const x = padding + i * xStep;
+                const y = height - padding - ((targetValue / maxValue) * (height - 2 * padding));
+                return `${x},${y}`;
+            }).join(' ');
+
+            return (
+                <div className="h-16 bg-gray-50 rounded flex items-center justify-center">
+                    <svg width={width} height={height} className="overflow-visible">
+                        <defs>
+                            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f3f4f6" strokeWidth="1"/>
+                            </pattern>
+                        </defs>
+                        <rect width="100%" height="100%" fill="url(#grid)" />
+                        
+                        <polyline
+                            points={targetPoints}
+                            fill="none"
+                            stroke="#F59E0B"
+                            strokeWidth="1"
+                            strokeDasharray="3,3"
+                        />
+                        
+                        <polyline
+                            points={spendPoints}
+                            fill="none"
+                            stroke="#3B82F6"
+                            strokeWidth="2"
+                        />
+                        
+                        {data.map((d, i) => {
+                            const x = padding + i * xStep;
+                            const y = height - padding - ((d.spend / maxValue) * (height - 2 * padding));
+                            return (
+                                <circle
+                                    key={i}
+                                    cx={x}
+                                    cy={y}
+                                    r="2"
+                                    fill="#3B82F6"
+                                />
+                            );
+                        })}
+                    </svg>
+                </div>
+            );
+        };
+
         const BudgetAdjustmentCard = ({ client }) => {
             const calculateTargetDailyBudget = () => {
                 if (client.daysLeft <= 0) return { recommended: 0, change: 0, message: "Period ended" };
@@ -936,6 +1002,32 @@
                                                     label="Projected vs Budget"
                                                     displayValue={`£${client.projectedSpend.toFixed(0)}`}
                                                 />
+                                            </div>
+
+                                            {/* Spend Chart Section */}
+                                            <div className="mb-6">
+                                                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                                                    <div className="text-center mb-2">
+                                                        <div className="text-xs font-medium text-gray-600">Daily Spend Trend</div>
+                                                    </div>
+                                                    {Object.keys(client.dailySpendData).length > 0 ? (
+                                                        <SimpleLineChart 
+                                                            data={Object.keys(client.dailySpendData)
+                                                                .sort()
+                                                                .slice(-10) // Show last 10 days
+                                                                .map(date => ({
+                                                                    date: date,
+                                                                    spend: client.dailySpendData[date]
+                                                                }))
+                                                            }
+                                                            targetValue={client.budget / client.totalDays}
+                                                        />
+                                                    ) : (
+                                                        <div className="h-16 bg-gray-50 rounded flex items-center justify-center">
+                                                            <div className="text-xs text-gray-500">No daily data available</div>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             <BudgetAdjustmentCard client={client} />
