@@ -378,7 +378,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.13.0'; // Fixed daily budget calculation - uses latest date's budget instead of summing all campaigns
+            const VERSION = 'v2.14.0'; // Fixed Facebook budget calculation - always divide by 100 for pence-to-pounds conversion
 
             const getAvailableMonths = useCallback(() => {
                 const currentDate = new Date();
@@ -769,25 +769,22 @@
                     if (data[facebookTabName]) {
                         let rowsMatched = 0;
                         let latestDate = null;
-                        let latestDateBudget = 0;
+                        let latestDateBudgets = new Map(); // Store unique budgets from latest date
                         
                         data[facebookTabName].forEach(row => {
                             const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
                             const rawBudget = row.DailyBudget || 0;
                             
+                            // Facebook budgets in the data are in pence/cents, need to divide by 100
                             let dailyBudget = 0;
                             if (rawBudget) {
                                 const cleanBudget = String(rawBudget).replace(/,/g, '');
                                 const numericBudget = parseFloat(cleanBudget);
                                 
                                 if (!isNaN(numericBudget)) {
-                                    // Facebook budgets might be in cents/pence
-                                    if (numericBudget > 100) {
-                                        dailyBudget = numericBudget / 100;
-                                    } else {
-                                        dailyBudget = numericBudget;
-                                    }
+                                    // All Facebook budgets need to be divided by 100 to get GBP
+                                    dailyBudget = numericBudget / 100;
                                 }
                             }
 
@@ -806,23 +803,25 @@
                                 const rowDate = new Date(row.Date);
                                 if (!latestDate || rowDate > latestDate) {
                                     latestDate = rowDate;
-                                    latestDateBudget = 0; // Reset for new date
+                                    latestDateBudgets.clear(); // Reset for new date
                                 }
                                 
                                 if (rowDate.getTime() === latestDate.getTime() && dailyBudget > 0) {
-                                    // For Apollo, sum up the adset budgets for the latest date
-                                    // This gives us the total Facebook daily budget
-                                    latestDateBudget += dailyBudget;
+                                    // Store unique budgets for this adset
+                                    const adsetKey = `${row.AdsetName || 'unknown'}`;
+                                    latestDateBudgets.set(adsetKey, dailyBudget);
                                 }
                             }
                         });
 
-                        facebookDailyBudget = latestDateBudget;
+                        // Sum all unique adset budgets from the latest date
+                        facebookDailyBudget = Array.from(latestDateBudgets.values()).reduce((sum, budget) => sum + budget, 0);
                         
                         if (clientName === 'Apollo') {
                             addLog(`🔍 APOLLO Facebook: ${rowsMatched} rows matched, £${facebookSpend.toFixed(2)} spend, £${facebookDailyBudget.toFixed(2)} daily budget`, 'info');
                             if (latestDate) {
                                 addLog(`🔍 APOLLO Facebook budget from latest date: ${latestDate.toDateString()}`, 'info');
+                                addLog(`🔍 APOLLO Facebook adsets found: ${Array.from(latestDateBudgets.entries()).map(([k,v]) => `${k}: £${v.toFixed(2)}`).join(', ')}`, 'info');
                             }
                         }
                     }
