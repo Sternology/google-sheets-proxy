@@ -378,7 +378,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.12.0'; // Fixed date filtering for Apollo billing periods
+            const VERSION = 'v2.13.0'; // Fixed daily budget calculation - uses latest date's budget instead of summing all campaigns
 
             const getAvailableMonths = useCallback(() => {
                 const currentDate = new Date();
@@ -712,8 +712,9 @@
                     // Process Google data
                     const googleTabName = `${tabPrefix} Google`;
                     if (data[googleTabName]) {
-                        const budgetMap = new Map();
                         let rowsMatched = 0;
+                        let latestDate = null;
+                        let latestDateBudget = 0;
                         
                         data[googleTabName].forEach(row => {
                             const campaign = row.Campaign || '';
@@ -731,27 +732,44 @@
                                 if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
                                 dailySpend[dateKey] += cost;
 
-                                if (dailyBudget > 0) {
-                                    budgetMap.set(campaign, dailyBudget);
+                                // Track the budget from the most recent date
+                                const rowDate = new Date(row.Date);
+                                if (!latestDate || rowDate > latestDate) {
+                                    latestDate = rowDate;
+                                    latestDateBudget = 0; // Reset for new date
+                                }
+                                
+                                if (rowDate.getTime() === latestDate.getTime() && dailyBudget > 0) {
+                                    // For Apollo, we know it's one campaign, so just take the budget
+                                    // For others, we might need to sum budgets on the same day
+                                    if (clientName === 'Apollo') {
+                                        latestDateBudget = dailyBudget;
+                                    } else {
+                                        latestDateBudget = Math.max(latestDateBudget, dailyBudget);
+                                    }
                                 }
                             }
                         });
 
-                        googleDailyBudget = Array.from(budgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                        googleDailyBudget = latestDateBudget;
                         
                         if (clientName === 'Apollo') {
-                            addLog(`🔍 APOLLO Google: ${rowsMatched} rows matched, £${googleSpend.toFixed(2)} spend, £${googleDailyBudget.toFixed(2)} budget`, 'info');
+                            addLog(`🔍 APOLLO Google: ${rowsMatched} rows matched, £${googleSpend.toFixed(2)} spend, £${googleDailyBudget.toFixed(2)} daily budget`, 'info');
                             
                             // Show date range being used
                             addLog(`🔍 APOLLO Date Range: ${periodStart.toDateString()} to ${periodEnd.toDateString()}`, 'info');
+                            if (latestDate) {
+                                addLog(`🔍 APOLLO Google budget from latest date: ${latestDate.toDateString()}`, 'info');
+                            }
                         }
                     }
 
                     // Process Facebook data
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
-                        const adsetBudgetMap = new Map();
                         let rowsMatched = 0;
+                        let latestDate = null;
+                        let latestDateBudget = 0;
                         
                         data[facebookTabName].forEach(row => {
                             const campaign = row.Campaign || '';
@@ -764,6 +782,7 @@
                                 const numericBudget = parseFloat(cleanBudget);
                                 
                                 if (!isNaN(numericBudget)) {
+                                    // Facebook budgets might be in cents/pence
                                     if (numericBudget > 100) {
                                         dailyBudget = numericBudget / 100;
                                     } else {
@@ -783,17 +802,28 @@
                                 if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
                                 dailySpend[dateKey] += cost;
 
-                                if (dailyBudget > 0) {
-                                    const adsetKey = `${campaign}_${row.AdsetName}`;
-                                    adsetBudgetMap.set(adsetKey, dailyBudget);
+                                // Track the budget from the most recent date
+                                const rowDate = new Date(row.Date);
+                                if (!latestDate || rowDate > latestDate) {
+                                    latestDate = rowDate;
+                                    latestDateBudget = 0; // Reset for new date
+                                }
+                                
+                                if (rowDate.getTime() === latestDate.getTime() && dailyBudget > 0) {
+                                    // For Apollo, sum up the adset budgets for the latest date
+                                    // This gives us the total Facebook daily budget
+                                    latestDateBudget += dailyBudget;
                                 }
                             }
                         });
 
-                        facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                        facebookDailyBudget = latestDateBudget;
                         
                         if (clientName === 'Apollo') {
-                            addLog(`🔍 APOLLO Facebook: ${rowsMatched} rows matched, £${facebookSpend.toFixed(2)} spend, £${facebookDailyBudget.toFixed(2)} budget`, 'info');
+                            addLog(`🔍 APOLLO Facebook: ${rowsMatched} rows matched, £${facebookSpend.toFixed(2)} spend, £${facebookDailyBudget.toFixed(2)} daily budget`, 'info');
+                            if (latestDate) {
+                                addLog(`🔍 APOLLO Facebook budget from latest date: ${latestDate.toDateString()}`, 'info');
+                            }
                         }
                     }
 
