@@ -378,7 +378,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.11.1'; // Fixed syntax errors and enhanced Apollo debugging
+            const VERSION = 'v2.12.0'; // Fixed date filtering for Apollo billing periods
 
             const getAvailableMonths = useCallback(() => {
                 const currentDate = new Date();
@@ -412,22 +412,32 @@
                     const day = today.getDate();
                     
                     let startMonth, endMonth;
+                    let startYear = currentYear;
+                    let endYear = currentYear;
                     
                     if (day >= 26) {
+                        // We're after the 26th, so period is from this month's 26th to next month's 25th
                         startMonth = currentMonth;
                         endMonth = currentMonth + 1;
+                        if (endMonth > 11) {
+                            endMonth = 0;
+                            endYear = currentYear + 1;
+                        }
                     } else {
+                        // We're before the 26th, so period is from last month's 26th to this month's 25th
                         startMonth = currentMonth - 1;
                         endMonth = currentMonth;
+                        if (startMonth < 0) {
+                            startMonth = 11;
+                            startYear = currentYear - 1;
+                        }
                     }
-                    
-                    if (startMonth < 0) startMonth = 11;
-                    if (endMonth > 11) endMonth = 0;
                     
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                     
                     const periodString = `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
                     console.log(`🔍 Apollo Period Calculation: Today is ${today.toDateString()}, Period: ${periodString}`);
+                    console.log(`🔍 Apollo Period Years: Start Year: ${startYear}, End Year: ${endYear}`);
                     
                     return periodString;
                 } else if (clientType === 'hc1') {
@@ -530,43 +540,81 @@
                 const parts = dateRange.split(' - ');
                 if (parts.length !== 2) return { start: null, end: null };
                 
-                const currentYear = new Date().getFullYear();
+                const today = new Date();
+                const currentYear = today.getFullYear();
+                const currentMonth = today.getMonth();
+                const currentDay = today.getDate();
+                
                 const monthMap = {
                     'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
                     'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
                 };
                 
-                const parseDate = (dateStr) => {
-                    const [month, day] = dateStr.split(' ');
-                    const monthIndex = monthMap[month];
-                    let year = currentYear;
-                    
-                    // Handle cross-year periods (like Dec 26 - Jan 25)
-                    const startMonthName = parts[0].split(' ')[0];
-                    const endMonthName = parts[1].split(' ')[0];
-                    const startMonthIndex = monthMap[startMonthName];
-                    const endMonthIndex = monthMap[endMonthName];
-                    
-                    if (startMonthIndex > endMonthIndex && month === endMonthName) {
-                        year = currentYear + 1;
-                    }
-                    
-                    return new Date(year, monthIndex, parseInt(day));
-                };
+                // Parse the start and end month/day from the period string
+                const [startMonthName, startDayStr] = parts[0].trim().split(' ');
+                const [endMonthName, endDayStr] = parts[1].trim().split(' ');
                 
-                const startDate = parseDate(parts[0]);
-                const endDate = parseDate(parts[1]);
+                const startMonthIndex = monthMap[startMonthName];
+                const endMonthIndex = monthMap[endMonthName];
+                const startDay = parseInt(startDayStr);
+                const endDay = parseInt(endDayStr);
+                
+                let startYear = currentYear;
+                let endYear = currentYear;
+                
+                // Determine the correct years for the period
+                if (dateRange.includes('26') && dateRange.includes('25')) {
+                    // Apollo billing period (26th to 25th)
+                    if (currentDay >= 26) {
+                        // We're after the 26th
+                        if (startMonthIndex === currentMonth) {
+                            // Period started this month
+                            startYear = currentYear;
+                            endYear = currentMonth === 11 ? currentYear + 1 : currentYear;
+                        }
+                    } else {
+                        // We're before the 26th
+                        if (endMonthIndex === currentMonth) {
+                            // Period ends this month
+                            endYear = currentYear;
+                            startYear = startMonthIndex === 11 && currentMonth === 0 ? currentYear - 1 : currentYear;
+                        }
+                    }
+                } else if (dateRange.includes('11') && dateRange.includes('10')) {
+                    // HC-One billing period (11th to 10th)
+                    if (currentDay >= 11) {
+                        if (startMonthIndex === currentMonth) {
+                            startYear = currentYear;
+                            endYear = currentMonth === 11 ? currentYear + 1 : currentYear;
+                        }
+                    } else {
+                        if (endMonthIndex === currentMonth) {
+                            endYear = currentYear;
+                            startYear = startMonthIndex === 11 && currentMonth === 0 ? currentYear - 1 : currentYear;
+                        }
+                    }
+                }
+                
+                const startDate = new Date(startYear, startMonthIndex, startDay);
+                const endDate = new Date(endYear, endMonthIndex, endDay);
                 
                 console.log(`🔍 Period Date Range: ${dateRange}`);
                 console.log(`🔍 Parsed Dates: ${startDate.toDateString()} to ${endDate.toDateString()}`);
-                console.log(`🔍 Today: ${new Date().toDateString()}`);
+                console.log(`🔍 Today: ${today.toDateString()}`);
                 
                 return { start: startDate, end: endDate };
             };
 
             const isDateInRange = (date, startDate, endDate) => {
+                // Parse the date string to ensure consistency
                 const checkDate = new Date(date);
-                return checkDate >= startDate && checkDate <= endDate;
+                
+                // Set all dates to midnight for consistent comparison
+                const normalizedCheck = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate());
+                const normalizedStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+                const normalizedEnd = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+                
+                return normalizedCheck >= normalizedStart && normalizedCheck <= normalizedEnd;
             };
 
             const loadData = async () => {
@@ -668,7 +716,6 @@
                         let rowsMatched = 0;
                         
                         data[googleTabName].forEach(row => {
-                            const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
                             const dailyBudget = parseFloat(row.DailyBudget) || 0;
@@ -676,7 +723,7 @@
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
 
-                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                            if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
                                 rowsMatched++;
                                 googleSpend += cost;
                                 
@@ -695,20 +742,8 @@
                         if (clientName === 'Apollo') {
                             addLog(`🔍 APOLLO Google: ${rowsMatched} rows matched, £${googleSpend.toFixed(2)} spend, £${googleDailyBudget.toFixed(2)} budget`, 'info');
                             
-                            // Show sample of matched dates to verify period filtering
-                            const matchedDates = [];
-                            data[googleTabName].forEach(row => {
-                                const rowDate = new Date(row.Date);
-                                if (isDateInRange(rowDate, periodStart, periodEnd)) {
-                                    matchedDates.push({
-                                        date: row.Date,
-                                        cost: parseFloat(row.Cost) || 0
-                                    });
-                                }
-                            });
-                            
-                            addLog(`🔍 APOLLO Google matched dates sample: ${JSON.stringify(matchedDates.slice(0, 5))}`, 'info');
-                            addLog(`🔍 APOLLO Google total matched dates: ${matchedDates.length}`, 'info');
+                            // Show date range being used
+                            addLog(`🔍 APOLLO Date Range: ${periodStart.toDateString()} to ${periodEnd.toDateString()}`, 'info');
                         }
                     }
 
@@ -719,7 +754,6 @@
                         let rowsMatched = 0;
                         
                         data[facebookTabName].forEach(row => {
-                            const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
                             const rawBudget = row.DailyBudget || 0;
@@ -741,7 +775,7 @@
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
 
-                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                            if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
                                 rowsMatched++;
                                 facebookSpend += cost;
                                 
@@ -760,24 +794,6 @@
                         
                         if (clientName === 'Apollo') {
                             addLog(`🔍 APOLLO Facebook: ${rowsMatched} rows matched, £${facebookSpend.toFixed(2)} spend, £${facebookDailyBudget.toFixed(2)} budget`, 'info');
-                            
-                            // Show sample of matched dates to verify period filtering
-                            const matchedDates = [];
-                            data[facebookTabName].forEach(row => {
-                                const rowDate = new Date(row.Date);
-                                if (isDateInRange(rowDate, periodStart, periodEnd)) {
-                                    matchedDates.push({
-                                        date: row.Date,
-                                        cost: parseFloat(row.Cost) || 0
-                                    });
-                                }
-                            });
-                            
-                            addLog(`🔍 APOLLO Facebook matched dates sample: ${JSON.stringify(matchedDates.slice(0, 5))}`, 'info');
-                            addLog(`🔍 APOLLO Facebook total matched dates: ${matchedDates.length}`, 'info');
-                            
-                            // Check if our date range logic is working
-                            addLog(`🔍 APOLLO Period check - Jul 26: ${isDateInRange(new Date('2025-07-26'), periodStart, periodEnd)}, Aug 12: ${isDateInRange(new Date('2025-08-12'), periodStart, periodEnd)}, Aug 25: ${isDateInRange(new Date('2025-08-25'), periodStart, periodEnd)}`, 'info');
                         }
                     }
 
@@ -794,7 +810,6 @@
 
                     let status = 'ON TRACK';
                     if (total >= config.budget) {
-                        // Already at or over budget
                         status = 'OVER BUDGET';
                     } else if (projectedOverBudget > 5) {
                         status = 'HOT';
@@ -882,7 +897,7 @@
                                 {loading && <p className="text-sm text-blue-600 mt-1">🔄 Loading data...</p>}
                                 {error && <p className="text-sm text-red-600 mt-1">❌ {error}</p>}
                                 {Object.keys(rawData).length > 0 && <p className="text-sm text-green-600 mt-1">✅ Processing {Object.keys(rawData).length} data tabs</p>}
-                                <p className="text-sm text-gray-600 mt-1">📊 Charts: ✅ Ready | 🎯 Budget Adjustments: ✅ Smart Recommendations | 🔍 Debugging: Enhanced for Apollo</p>
+                                <p className="text-sm text-gray-600 mt-1">🔧 v2.12.0: Fixed date filtering for Apollo billing periods</p>
                             </div>
 
                             {logs.length > 0 && (
