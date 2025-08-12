@@ -161,6 +161,17 @@
             const calculateTargetDailyBudget = () => {
                 if (client.daysLeft <= 0) return { recommended: 0, change: 0, message: "Period ended" };
                 
+                // If already at or over budget, recommend pausing or minimal spend
+                if (client.total >= client.budget) {
+                    return {
+                        recommended: 0,
+                        change: -client.currentDailyBudget,
+                        changePercentage: -100,
+                        message: "Already over budget - pause campaigns to avoid further overspend",
+                        urgency: "critical"
+                    };
+                }
+                
                 const remainingBudget = client.budget - client.total;
                 const targetDailySpend = remainingBudget / client.daysLeft;
                 const recommendedDailyBudget = Math.max(0, targetDailySpend);
@@ -171,10 +182,7 @@
                 let message = "";
                 let urgency = "normal";
                 
-                if (client.total >= client.budget) {
-                    message = "Already at/over budget - consider pausing campaigns";
-                    urgency = "critical";
-                } else if (Math.abs(changePercentage) < 5) {
+                if (Math.abs(changePercentage) < 5) {
                     message = "Current budget is close to optimal";
                     urgency = "good";
                 } else if (change > 0) {
@@ -686,6 +694,21 @@
                         
                         if (clientName === 'Apollo') {
                             addLog(`🔍 APOLLO Google: ${rowsMatched} rows matched, £${googleSpend.toFixed(2)} spend, £${googleDailyBudget.toFixed(2)} budget`, 'info');
+                            
+                            // Show sample of matched dates to verify period filtering
+                            const matchedDates = [];
+                            data[googleTabName].forEach(row => {
+                                const rowDate = new Date(row.Date);
+                                if (isDateInRange(rowDate, periodStart, periodEnd)) {
+                                    matchedDates.push({
+                                        date: row.Date,
+                                        cost: parseFloat(row.Cost) || 0
+                                    });
+                                }
+                            });
+                            
+                            addLog(`🔍 APOLLO Google matched dates sample: ${JSON.stringify(matchedDates.slice(0, 5))}`, 'info');
+                            addLog(`🔍 APOLLO Google total matched dates: ${matchedDates.length}`, 'info');
                         }
                     }
 
@@ -737,6 +760,24 @@
                         
                         if (clientName === 'Apollo') {
                             addLog(`🔍 APOLLO Facebook: ${rowsMatched} rows matched, £${facebookSpend.toFixed(2)} spend, £${facebookDailyBudget.toFixed(2)} budget`, 'info');
+                            
+                            // Show sample of matched dates to verify period filtering
+                            const matchedDates = [];
+                            data[facebookTabName].forEach(row => {
+                                const rowDate = new Date(row.Date);
+                                if (isDateInRange(rowDate, periodStart, periodEnd)) {
+                                    matchedDates.push({
+                                        date: row.Date,
+                                        cost: parseFloat(row.Cost) || 0
+                                    });
+                                }
+                            });
+                            
+                            addLog(`🔍 APOLLO Facebook matched dates sample: ${JSON.stringify(matchedDates.slice(0, 5))}`, 'info');
+                            addLog(`🔍 APOLLO Facebook total matched dates: ${matchedDates.length}`, 'info');
+                            
+                            // Check if our date range logic is working
+                            addLog(`🔍 APOLLO Period check - Jul 26: ${isDateInRange(new Date('2025-07-26'), periodStart, periodEnd)}, Aug 12: ${isDateInRange(new Date('2025-08-12'), periodStart, periodEnd)}, Aug 25: ${isDateInRange(new Date('2025-08-25'), periodStart, periodEnd)}`, 'info');
                         }
                     }
 
@@ -752,7 +793,10 @@
                     }
 
                     let status = 'ON TRACK';
-                    if (projectedOverBudget > 5) {
+                    if (total >= config.budget) {
+                        // Already at or over budget
+                        status = 'OVER BUDGET';
+                    } else if (projectedOverBudget > 5) {
                         status = 'HOT';
                     } else if (projectedOverBudget < -5) {
                         status = 'COLD';
@@ -875,12 +919,13 @@
                                                     <div className="text-sm text-gray-600 mt-1">{client.period}</div>
                                                 </div>
                                                 <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                                    client.status === 'HOT' ? 'bg-red-100 text-red-800 border-red-200' :
+                                                    client.status === 'HOT' || client.status === 'OVER BUDGET' ? 'bg-red-100 text-red-800 border-red-200' :
                                                     client.status === 'COLD' ? 'bg-blue-100 text-blue-800 border-blue-200' :
                                                     'bg-green-100 text-green-800 border-green-200'
                                                 }`}>
                                                     {client.status === 'ON TRACK' ? '✅ ON TRACK' : 
-                                                     client.status === 'HOT' ? '🔥 HOT' : '🧊 COLD'}
+                                                     client.status === 'HOT' ? '🔥 HOT' : 
+                                                     client.status === 'OVER BUDGET' ? '🚨 OVER BUDGET' : '🧊 COLD'}
                                                 </span>
                                             </div>
                                             
