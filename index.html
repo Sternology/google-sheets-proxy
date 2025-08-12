@@ -80,7 +80,7 @@
                             />
                         </svg>
                         <div className="gauge-text">
-                            <div className="text-lg font-bold" style={{ color }}>
+                            <div className={`text-lg font-bold`} style={{ color }}>
                                 {displayValue}
                             </div>
                             <div className="text-xs text-gray-500">{label.split(' ')[0]}</div>
@@ -116,6 +116,7 @@
             return (
                 <div className="h-16 bg-gray-50 rounded flex items-center justify-center">
                     <svg width={width} height={height} className="overflow-visible">
+                        {/* Grid */}
                         <defs>
                             <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
                                 <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f3f4f6" strokeWidth="1"/>
@@ -123,6 +124,7 @@
                         </defs>
                         <rect width="100%" height="100%" fill="url(#grid)" />
                         
+                        {/* Target line */}
                         <polyline
                             points={targetPoints}
                             fill="none"
@@ -131,6 +133,7 @@
                             strokeDasharray="3,3"
                         />
                         
+                        {/* Spend line */}
                         <polyline
                             points={spendPoints}
                             fill="none"
@@ -138,6 +141,7 @@
                             strokeWidth="2"
                         />
                         
+                        {/* Dots */}
                         {data.map((d, i) => {
                             const x = padding + i * xStep;
                             const y = height - padding - ((d.spend / maxValue) * (height - 2 * padding));
@@ -158,11 +162,14 @@
 
         // Budget Adjustment Recommendation Component
         const BudgetAdjustmentCard = ({ client }) => {
+            // Calculate what daily budget is needed to hit target exactly
             const calculateTargetDailyBudget = () => {
                 if (client.daysLeft <= 0) return { recommended: 0, change: 0, message: "Period ended" };
                 
                 const remainingBudget = client.budget - client.total;
                 const targetDailySpend = remainingBudget / client.daysLeft;
+                
+                // If we need negative spending (already overspent), set to 0
                 const recommendedDailyBudget = Math.max(0, targetDailySpend);
                 const currentDailyBudget = client.currentDailyBudget;
                 const change = recommendedDailyBudget - currentDailyBudget;
@@ -194,6 +201,7 @@
                 };
             };
 
+            // Calculate platform-specific recommendations
             const calculatePlatformRecommendations = () => {
                 const adjustment = calculateTargetDailyBudget();
                 
@@ -206,9 +214,11 @@
                     };
                 }
                 
+                // Maintain current platform ratio if both platforms are active
                 const totalCurrentBudget = client.googleDailyBudget + client.facebookDailyBudget;
                 
                 if (totalCurrentBudget <= 0) {
+                    // If no current budget, split evenly
                     return {
                         google: adjustment.recommended / 2,
                         facebook: adjustment.recommended / 2,
@@ -217,6 +227,7 @@
                     };
                 }
                 
+                // Maintain proportional split
                 const googleRatio = client.googleDailyBudget / totalCurrentBudget;
                 const facebookRatio = client.facebookDailyBudget / totalCurrentBudget;
                 
@@ -234,6 +245,7 @@
             const adjustment = calculateTargetDailyBudget();
             const platformRecs = calculatePlatformRecommendations();
 
+            // Don't show recommendations if we're on track
             if (client.status === 'ON TRACK') {
                 return (
                     <div className="mt-4 p-4 rounded-lg bg-green-50 border border-green-200">
@@ -292,6 +304,7 @@
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Current vs Recommended */}
                         <div className="space-y-2">
                             <div className="text-xs font-medium opacity-75">TOTAL DAILY BUDGET</div>
                             <div className="flex justify-between items-center">
@@ -315,9 +328,11 @@
                             </div>
                         </div>
 
+                        {/* Platform Breakdown */}
                         <div className="space-y-2">
                             <div className="text-xs font-medium opacity-75">PLATFORM BREAKDOWN</div>
                             
+                            {/* Google */}
                             {(client.googleDailyBudget > 0 || platformRecs.google > 0) && (
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-orange-600">Google:</span>
@@ -332,6 +347,7 @@
                                 </div>
                             )}
                             
+                            {/* Facebook */}
                             {(client.facebookDailyBudget > 0 || platformRecs.facebook > 0) && (
                                 <div className="flex justify-between items-center text-sm">
                                     <span className="text-purple-600">Meta:</span>
@@ -348,6 +364,7 @@
                         </div>
                     </div>
 
+                    {/* Projection with new budget */}
                     <div className="mt-3 pt-3 border-t border-current opacity-50">
                         <div className="text-xs">
                             <span className="font-medium">With this change:</span>
@@ -366,15 +383,16 @@
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
             const [logs, setLogs] = useState([]);
-            const [selectedMonth, setSelectedMonth] = useState('current');
-            const [historicalData, setHistoricalData] = useState({});
+            const [selectedMonth, setSelectedMonth] = useState('current'); // New state for month selection
+            const [historicalData, setHistoricalData] = useState({}); // Store all historical data
 
             // Configuration
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.11.0';
+            const VERSION = 'v2.11.0'; // Added historical month navigation and performance tracking
 
+            // Generate available months for the current year
             const getAvailableMonths = useCallback(() => {
                 const currentDate = new Date();
                 const currentYear = currentDate.getFullYear();
@@ -384,6 +402,7 @@
                     { value: 'current', label: 'Current Period', isCurrent: true }
                 ];
                 
+                // Add months from January to current month
                 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
                                  'July', 'August', 'September', 'October', 'November', 'December'];
                 
@@ -395,27 +414,116 @@
                     });
                 }
                 
-                return months.reverse();
+                return months.reverse(); // Most recent first
             }, []);
 
+            // Get period for historical months
             const getHistoricalPeriod = useCallback((year, month, clientType) => {
                 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 
                 if (clientType === 'apollo') {
+                    // Apollo runs 26th to 25th
                     const startMonth = month - 1 < 0 ? 11 : month - 1;
                     const endMonth = month;
+                    const startYear = month - 1 < 0 ? year - 1 : year;
                     return `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
                 } else if (clientType === 'hc1') {
+                    // HC-One runs 11th to 10th  
                     const startMonth = month - 1 < 0 ? 11 : month - 1;
                     const endMonth = month;
+                    const startYear = month - 1 < 0 ? year - 1 : year;
                     return `${monthNames[startMonth]} 11 - ${monthNames[endMonth]} 10`;
                 } else {
+                    // Standard calendar month
                     const lastDay = new Date(year, month + 1, 0).getDate();
                     return `${monthNames[month]} 1 - ${monthNames[month]} ${lastDay}`;
                 }
             }, []);
-
+            // Get current reporting period for each client (dynamic)
             const getCurrentPeriod = useCallback((clientType) => {
+                const today = new Date();
+                
+                if (clientType === 'apollo') {
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const day = today.getDate();
+                    
+                    let startMonth, startYear, endMonth, endYear;
+                    
+                    // Apollo billing: 26th of one month to 25th of next month
+                    if (day >= 26) {
+                        // We're in a new billing period that started this month
+                        startMonth = currentMonth;
+                        startYear = currentYear;
+                        endMonth = currentMonth + 1;
+                        endYear = currentYear;
+                    } else {
+                        // We're still in the billing period that started last month
+                        startMonth = currentMonth - 1;
+                        startYear = currentYear;
+                        endMonth = currentMonth;
+                        endYear = currentYear;
+                    }
+                    
+                    // Handle year boundaries
+                    if (startMonth < 0) {
+                        startMonth = 11; // December
+                        startYear--;
+                    }
+                    if (endMonth > 11) {
+                        endMonth = 0; // January
+                        endYear++;
+                    }
+                    
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    
+                    // Log the calculated period for debugging
+                    const periodString = `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
+                    if (clientType === 'apollo') {
+                        console.log(`🔍 Apollo Period Calculation: Today is ${today.toDateString()}, Period: ${periodString}`);
+                    }
+                    
+                    return periodString;
+                } else if (clientType === 'hc1') {
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const day = today.getDate();
+                    
+                    let startMonth, startYear, endMonth, endYear;
+                    
+                    if (day >= 11) {
+                        startMonth = currentMonth;
+                        startYear = currentYear;
+                        endMonth = currentMonth + 1;
+                        endYear = currentYear;
+                    } else {
+                        startMonth = currentMonth - 1;
+                        startYear = currentYear;
+                        endMonth = currentMonth;
+                        endYear = currentYear;
+                    }
+                    
+                    if (startMonth < 0) {
+                        startMonth = 11;
+                        startYear--;
+                    }
+                    if (endMonth > 11) {
+                        endMonth = 0;
+                        endYear++;
+                    }
+                    
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[startMonth]} 11 - ${monthNames[endMonth]} 10`;
+                } else {
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const currentMonthName = monthNames[currentMonth];
+                    const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+                    
+                    return `${currentMonthName} 1 - ${currentMonthName} ${lastDay}`;
+                }
+            }, []);
                 const today = new Date();
                 
                 if (clientType === 'apollo') {
@@ -489,6 +597,7 @@
                 }
             }, []);
 
+            // Get total days for the period
             const getTotalDays = useCallback((clientType) => {
                 if (clientType === 'apollo') {
                     return 30;
@@ -500,13 +609,14 @@
                 }
             }, []);
 
+            // Client and campaign configuration - updated for historical months
             const clientConfig = useMemo(() => {
                 const isHistorical = selectedMonth !== 'current';
                 const [year, month] = isHistorical ? selectedMonth.split('-').map(Number) : [null, null];
                 
                 const getConfigPeriod = (clientType) => {
                     if (isHistorical) {
-                        return getHistoricalPeriod(year, month - 1, clientType);
+                        return getHistoricalPeriod(year, month - 1, clientType); // month-1 because JS months are 0-indexed
                     } else {
                         return getCurrentPeriod(clientType);
                     }
@@ -515,9 +625,9 @@
                 const getConfigTotalDays = (clientType) => {
                     if (isHistorical) {
                         if (clientType === 'apollo' || clientType === 'hc1') {
-                            return 30;
+                            return 30; // Always 30 for these clients
                         } else {
-                            return new Date(year, month, 0).getDate();
+                            return new Date(year, month, 0).getDate(); // Last day of the historical month
                         }
                     } else {
                         return getTotalDays(clientType);
@@ -572,6 +682,7 @@
                 };
             }, [getCurrentPeriod, getTotalDays, getHistoricalPeriod, selectedMonth]);
 
+            // Utility functions
             const addLog = useCallback((message, type = 'info') => {
                 const timestamp = new Date().toLocaleTimeString();
                 setLogs(prev => [...prev, { message, type, timestamp }]);
@@ -586,77 +697,19 @@
                 const parts = dateRange.split(' - ');
                 if (parts.length !== 2) return { start: null, end: null };
                 
-                // For historical periods, we need to be smarter about year handling
-                const isHistorical = selectedMonth !== 'current';
-                let targetYear = new Date().getFullYear();
-                
-                if (isHistorical) {
-                    const [year, month] = selectedMonth.split('-').map(Number);
-                    targetYear = year;
-                }
-                
-                const monthMap = {
-                    'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-                    'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-                };
-                
+                const currentYear = new Date().getFullYear();
                 const parseDate = (dateStr) => {
                     const [month, day] = dateStr.split(' ');
-                    const monthIndex = monthMap[month];
-                    
-                    let year = targetYear;
-                    
-                    // Handle cross-year periods and cross-month periods
-                    if (isHistorical) {
-                        const [selectedYear, selectedMonthNum] = selectedMonth.split('-').map(Number);
-                        
-                        // For periods that span different months, we need to be careful about year assignment
-                        const startMonthName = parts[0].split(' ')[0];
-                        const endMonthName = parts[1].split(' ')[0];
-                        const startMonthIndex = monthMap[startMonthName];
-                        const endMonthIndex = monthMap[endMonthName];
-                        
-                        if (startMonthIndex !== endMonthIndex) {
-                            // This is a cross-month period
-                            if (month === startMonthName) {
-                                // This is the start month
-                                if (endMonthIndex < startMonthIndex) {
-                                    // End month is in next year (like Dec -> Jan)
-                                    year = selectedYear;
-                                } else {
-                                    // Normal case: start month in same year
-                                    year = selectedYear;
-                                }
-                            } else {
-                                // This is the end month  
-                                if (endMonthIndex < startMonthIndex) {
-                                    // End month is in next year (like Dec -> Jan)
-                                    year = selectedYear + 1;
-                                } else {
-                                    // Normal case: end month in same year
-                                    year = selectedYear;
-                                }
-                            }
-                        } else {
-                            // Same month for start and end
-                            year = selectedYear;
-                        }
-                    }
-                    
-                    return new Date(year, monthIndex, parseInt(day));
+                    const monthMap = {
+                        'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+                        'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+                    };
+                    return new Date(currentYear, monthMap[month], parseInt(day));
                 };
                 
-                const startDate = parseDate(parts[0]);
-                const endDate = parseDate(parts[1]);
-                
-                // Add debugging for historical periods
-                if (isHistorical) {
-                    addLog(`Historical date range: ${dateRange} -> ${startDate.toDateString()} to ${endDate.toDateString()}`, 'info');
-                }
-                
                 return {
-                    start: startDate,
-                    end: endDate
+                    start: parseDate(parts[0]),
+                    end: parseDate(parts[1])
                 };
             };
 
@@ -665,6 +718,7 @@
                 return checkDate >= startDate && checkDate <= endDate;
             };
 
+            // Load data from proxy
             const loadData = async () => {
                 clearLogs();
                 addLog('Starting data load process...', 'info');
@@ -744,6 +798,7 @@
                 }
             };
 
+            // Process raw data into client metrics - updated for historical view
             const processRawData = useCallback((data) => {
                 const isCurrentPeriod = selectedMonth === 'current';
                 const today = new Date();
@@ -756,11 +811,13 @@
                     
                     if (!periodStart || !periodEnd) return;
 
+                    // For historical periods, calculate as if period ended
                     let daysElapsed, daysLeft;
                     if (isCurrentPeriod) {
                         daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24)) + 1;
                         daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)) + 1);
                     } else {
+                        // Historical period - treat as completed
                         daysElapsed = config.totalDays;
                         daysLeft = 0;
                     }
@@ -771,14 +828,12 @@
                     let googleDailyBudget = 0;
                     let facebookDailyBudget = 0;
 
+                    // Process Google data
                     const googleTabName = `${tabPrefix} Google`;
                     if (data[googleTabName]) {
                         const budgetMap = new Map();
-                        let rowsProcessed = 0;
-                        let rowsMatched = 0;
                         
                         data[googleTabName].forEach(row => {
-                            rowsProcessed++;
                             const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
@@ -788,7 +843,6 @@
                                                  config.campaigns.some(c => campaign === c);
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
-                                rowsMatched++;
                                 googleSpend += cost;
                                 
                                 const dateKey = row.Date;
@@ -802,32 +856,24 @@
                         });
 
                         googleDailyBudget = Array.from(budgetMap.values()).reduce((sum, budget) => sum + budget, 0);
-                        
-                        // Debug logging for historical periods
-                        if (!isCurrentPeriod) {
-                            addLog(`${clientName} Google: ${rowsMatched}/${rowsProcessed} rows matched, £${googleSpend.toFixed(2)} total`, 'info');
-                            if (clientName.includes('HC-One')) {
-                                addLog(`HC-One Debug - Period: ${config.period}, Sample dates in data: ${data[googleTabName].slice(0, 3).map(r => r.Date).join(', ')}`, 'info');
-                            }
-                        }
                     }
 
+                    // Process Facebook data
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
                         const adsetBudgetMap = new Map();
-                        let rowsProcessed = 0;
-                        let rowsMatched = 0;
                         
                         data[facebookTabName].forEach(row => {
-                            rowsProcessed++;
                             const rowDate = new Date(row.Date);
                             const campaign = row.Campaign || '';
                             const adsetName = row.AdsetName || '';
                             const cost = parseFloat(row.Cost) || 0;
                             const rawBudget = row.DailyBudget || 0;
                             
+                            // Fixed budget parsing with proper comma handling
                             let dailyBudget = 0;
                             if (rawBudget) {
+                                // Remove commas first, then parse
                                 const cleanBudget = String(rawBudget).replace(/,/g, '');
                                 const numericBudget = parseFloat(cleanBudget);
                                 
@@ -844,7 +890,6 @@
                                                  config.campaigns.some(c => campaign === c);
 
                             if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
-                                rowsMatched++;
                                 facebookSpend += cost;
                                 
                                 const dateKey = row.Date;
@@ -859,13 +904,9 @@
                         });
 
                         facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
-                        
-                        // Debug logging for historical periods
-                        if (!isCurrentPeriod) {
-                            addLog(`${clientName} Facebook: ${rowsMatched}/${rowsProcessed} rows matched, £${facebookSpend.toFixed(2)} total`, 'info');
-                        }
                     }
 
+                    // Calculate metrics
                     const total = googleSpend + facebookSpend;
                     const used = (total / config.budget) * 100;
                     const remaining = config.budget - total;
@@ -874,13 +915,16 @@
                     const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
                     const pace = requiredDaily > 0 ? (currentDailyBudget / requiredDaily) * 100 : 100;
                     
+                    // Calculate projected spend (only for current period)
                     const projectedSpend = isCurrentPeriod ? total + (currentDailyBudget * daysLeft) : total;
                     const projectedOverBudget = ((projectedSpend / config.budget) - 1) * 100;
 
+                    // Status logic - for historical periods, base on actual vs target
                     let status = 'ON TRACK';
                     let pacePercentage = 100;
                     
                     if (isCurrentPeriod) {
+                        // Current period logic (projected)
                         if (projectedOverBudget > 5) {
                             status = 'HOT';
                             pacePercentage = Math.min(((projectedSpend / config.budget) * 100), 150);
@@ -892,6 +936,7 @@
                             pacePercentage = 100;
                         }
                     } else {
+                        // Historical period logic (actual performance)
                         const actualVsTarget = ((total / config.budget) - 1) * 100;
                         if (actualVsTarget > 5) {
                             status = 'OVERSPENT';
@@ -934,7 +979,160 @@
 
                 return processedClients;
             }, [clientConfig, selectedMonth]);
+                const today = new Date();
+                const processedClients = [];
 
+                Object.keys(clientConfig).forEach(clientName => {
+                    const config = clientConfig[clientName];
+                    const tabPrefix = config.tabPrefix || clientName;
+                    const { start: periodStart, end: periodEnd } = parseDateRange(config.period);
+                    
+                    if (!periodStart || !periodEnd) return;
+
+                    const daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24)) + 1;
+                    const daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)) + 1);
+
+                    let googleSpend = 0;
+                    let facebookSpend = 0;
+                    let dailySpend = {};
+                    let googleDailyBudget = 0;
+                    let facebookDailyBudget = 0;
+
+                    // Process Google data
+                    const googleTabName = `${tabPrefix} Google`;
+                    if (data[googleTabName]) {
+                        const budgetMap = new Map();
+                        
+                        data[googleTabName].forEach(row => {
+                            const rowDate = new Date(row.Date);
+                            const campaign = row.Campaign || '';
+                            const cost = parseFloat(row.Cost) || 0;
+                            const dailyBudget = parseFloat(row.DailyBudget) || 0;
+
+                            const matchesCampaign = config.campaigns.includes('*') || 
+                                                 config.campaigns.some(c => campaign === c);
+
+                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                googleSpend += cost;
+                                
+                                const dateKey = row.Date;
+                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
+                                dailySpend[dateKey] += cost;
+
+                                if (dailyBudget > 0) {
+                                    budgetMap.set(campaign, dailyBudget);
+                                }
+                            }
+                        });
+
+                        googleDailyBudget = Array.from(budgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                    }
+
+                    // Process Facebook data
+                    const facebookTabName = `${tabPrefix} FB`;
+                    if (data[facebookTabName]) {
+                        const adsetBudgetMap = new Map();
+                        
+                        data[facebookTabName].forEach(row => {
+                            const rowDate = new Date(row.Date);
+                            const campaign = row.Campaign || '';
+                            const adsetName = row.AdsetName || '';
+                            const cost = parseFloat(row.Cost) || 0;
+                            const rawBudget = row.DailyBudget || 0;
+                            
+                            // Fixed budget parsing with proper comma handling
+                            let dailyBudget = 0;
+                            if (rawBudget) {
+                                // Remove commas first, then parse
+                                const cleanBudget = String(rawBudget).replace(/,/g, '');
+                                const numericBudget = parseFloat(cleanBudget);
+                                
+                                if (!isNaN(numericBudget)) {
+                                    if (numericBudget > 100) {
+                                        dailyBudget = numericBudget / 100;
+                                    } else {
+                                        dailyBudget = numericBudget;
+                                    }
+                                }
+                            }
+
+                            const matchesCampaign = config.campaigns.includes('*') || 
+                                                 config.campaigns.some(c => campaign === c);
+
+                            if (matchesCampaign && isDateInRange(rowDate, periodStart, periodEnd)) {
+                                facebookSpend += cost;
+                                
+                                const dateKey = row.Date;
+                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
+                                dailySpend[dateKey] += cost;
+
+                                if (dailyBudget > 0 && adsetName) {
+                                    const adsetKey = `${campaign}_${adsetName}`;
+                                    adsetBudgetMap.set(adsetKey, dailyBudget);
+                                }
+                            }
+                        });
+
+                        facebookDailyBudget = Array.from(adsetBudgetMap.values()).reduce((sum, budget) => sum + budget, 0);
+                    }
+
+                    // Calculate metrics
+                    const total = googleSpend + facebookSpend;
+                    const used = (total / config.budget) * 100;
+                    const remaining = config.budget - total;
+                    const currentDaily = daysElapsed > 0 ? total / daysElapsed : 0;
+                    const requiredDaily = daysLeft > 0 ? remaining / daysLeft : 0;
+                    const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
+                    const pace = requiredDaily > 0 ? (currentDailyBudget / requiredDaily) * 100 : 100;
+                    
+                    // Calculate projected spend
+                    const projectedSpend = total + (currentDailyBudget * daysLeft);
+                    const projectedOverBudget = ((projectedSpend / config.budget) - 1) * 100;
+
+                    // NEW PACE LOGIC: Based on projected spend vs target budget
+                    let status = 'ON TRACK';
+                    let pacePercentage = 100; // Default to 100% for display
+                    
+                    if (projectedOverBudget > 5) {
+                        status = 'HOT';
+                        pacePercentage = Math.min(((projectedSpend / config.budget) * 100), 150);
+                    } else if (projectedOverBudget < -5) {
+                        status = 'COLD'; 
+                        pacePercentage = (projectedSpend / config.budget) * 100;
+                    } else {
+                        status = 'ON TRACK';
+                        pacePercentage = 100;
+                    }
+
+                    processedClients.push({
+                        name: clientName,
+                        google: googleSpend,
+                        facebook: facebookSpend,
+                        total: total,
+                        budget: config.budget,
+                        period: config.period,
+                        totalDays: config.totalDays,
+                        daysElapsed: daysElapsed,
+                        daysLeft: daysLeft,
+                        used: used,
+                        remaining: remaining,
+                        currentDaily: currentDaily,
+                        requiredDaily: requiredDaily,
+                        pace: pacePercentage,
+                        status: status,
+                        currentDailyBudget: currentDailyBudget,
+                        googleDailyBudget: googleDailyBudget,
+                        facebookDailyBudget: facebookDailyBudget,
+                        projectedSpend: projectedSpend,
+                        projectedOverBudget: projectedOverBudget,
+                        dailySpendData: dailySpend
+                    });
+                });
+
+                return processedClients;
+            }, [clientConfig]);
+
+            // Load data on mount and when month changes
             useEffect(() => {
                 loadData();
             }, [selectedMonth]);
@@ -946,6 +1144,7 @@
             const totalSpend = dataToUse.reduce((sum, client) => sum + client.total, 0);
             const totalDailyBudget = dataToUse.reduce((sum, client) => sum + client.currentDailyBudget, 0);
             
+            // Historical performance summary
             const historicalSummary = useMemo(() => {
                 if (selectedMonth === 'current') return null;
                 
@@ -966,6 +1165,7 @@
             return (
                 <div className="w-full min-h-screen bg-gray-50 p-4">
                     <div className="max-w-full mx-auto">
+                        {/* Header */}
                         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
                             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
                                 <div>
@@ -988,6 +1188,7 @@
                                 </div>
                             </div>
 
+                            {/* Month Selector */}
                             <div className="mt-6 flex flex-wrap items-center gap-4">
                                 <div className="flex items-center gap-2">
                                     <label htmlFor="month-select" className="text-sm font-medium text-gray-700">
@@ -1022,6 +1223,7 @@
                                 </button>
                             </div>
 
+                            {/* Historical Performance Summary */}
                             {historicalSummary && (
                                 <div className="mt-6 p-4 bg-gray-50 rounded-lg">
                                     <h3 className="text-lg font-semibold text-gray-800 mb-3">
@@ -1055,6 +1257,7 @@
                                 <p className="text-sm text-gray-600 mt-1">📊 Charts: ✅ Ready (Custom SVG) | 🎯 Budget Adjustments: ✅ Smart Recommendations | 📅 Historical: ✅ Month Navigation</p>
                             </div>
 
+                            {/* Logs Display */}
                             {logs.length > 0 && (
                                 <div className="mt-4">
                                     <h4 className="text-sm font-medium text-gray-800 mb-2">System Logs:</h4>
@@ -1076,6 +1279,7 @@
                             )}
                         </div>
 
+                        {/* Main Dashboard Content */}
                         <div className="bg-white rounded-lg shadow-sm p-6">
                             <h2 className="text-2xl font-bold mb-6 text-center">
                                 {selectedMonth === 'current' ? 'Budget Performance Dashboard' : 'Historical Performance Review'}
@@ -1085,6 +1289,7 @@
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {dataToUse.map(client => (
                                         <div key={client.name} className="border-2 rounded-xl p-6 transition-all hover:shadow-lg bg-green-50 border-green-300">
+                                            {/* Client Header */}
                                             <div className="flex justify-between items-start mb-4">
                                                 <div>
                                                     <h3 className="font-bold text-lg text-gray-900">{client.name}</h3>
@@ -1103,7 +1308,9 @@
                                                 </span>
                                             </div>
                                             
+                                            {/* Custom SVG Gauge Charts */}
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                                {/* Budget Usage Gauge */}
                                                 <GaugeChart
                                                     value={client.used}
                                                     maxValue={client.isHistorical ? Math.max(100, client.used) : 100}
@@ -1112,6 +1319,7 @@
                                                     displayValue={`${client.used.toFixed(0)}%`}
                                                 />
                                                 
+                                                {/* Pace/Performance Gauge */}
                                                 <div className="relative bg-white p-4 rounded-lg border border-gray-200">
                                                     <div className="text-center mb-2">
                                                         <div 
@@ -1162,6 +1370,7 @@
                                                     </div>
                                                 </div>
 
+                                                {/* Projected/Actual Spend Gauge */}
                                                 <GaugeChart
                                                     value={Math.min((client.projectedSpend / client.budget) * 100, 130)}
                                                     maxValue={130}
@@ -1173,8 +1382,10 @@
                                                 />
                                             </div>
 
+                                            {/* Budget Adjustment Recommendations - only for current period */}
                                             {!client.isHistorical && <BudgetAdjustmentCard client={client} />}
 
+                                            {/* Historical Performance Summary */}
                                             {client.isHistorical && (
                                                 <div className={`mt-4 p-4 rounded-lg border-2 ${
                                                     client.status === 'HIT TARGET' ? 'bg-green-50 border-green-300 text-green-900' :
@@ -1200,6 +1411,7 @@
                                                 </div>
                                             )}
 
+                                            {/* Financial Details */}
                                             <div className={`space-y-3 ${client.isHistorical ? 'mt-6' : 'mt-6'}`}>
                                                 <div className="flex justify-between items-center">
                                                     <span 
@@ -1283,6 +1495,7 @@
                                                     </>
                                                 )}
                                                 
+                                                {/* Platform Split */}
                                                 {(client.google > 0 || client.facebook > 0) && (
                                                     <div className="border-t pt-3 mt-3">
                                                         <div className="text-sm font-medium text-gray-700 mb-2">
@@ -1325,6 +1538,7 @@
                                                     </div>
                                                 )}
 
+                                                {/* Daily Spending Trend with Custom Chart */}
                                                 {Object.keys(client.dailySpendData || {}).length > 0 && (
                                                     <div className="border-t pt-3 mt-3">
                                                         <div className="text-sm font-medium text-gray-700 mb-2">
@@ -1350,6 +1564,7 @@
                                                             targetValue={client.budget / client.totalDays}
                                                         />
                                                         
+                                                        {/* Legend */}
                                                         <div className="flex justify-end gap-3 text-xs mt-1">
                                                             <div className="flex items-center gap-1">
                                                                 <div className="w-3 h-0.5 bg-blue-500"></div>
@@ -1364,6 +1579,7 @@
                                                 )}
                                             </div>
                                             
+                                            {/* Days Left Alert - only for current period */}
                                             {!client.isHistorical && client.daysLeft <= 1 && (
                                                 <div className="mt-4 p-3 rounded-lg text-center bg-red-100 text-red-800">
                                                     <div className="font-bold">🚨 ENDS TODAY!</div>
@@ -1371,6 +1587,7 @@
                                                 </div>
                                             )}
                                             
+                                            {/* Status Summary */}
                                             <div className="mt-4 text-center">
                                                 <div className={`text-sm font-semibold ${
                                                     (client.status === 'COLD' || client.status === 'UNDERSPENT') ? 'text-blue-600' :
@@ -1391,6 +1608,233 @@
                                                          client.status === 'COLD' ? `Projected to underspend by ${Math.abs(client.projectedOverBudget).toFixed(0)}%` : 
                                                          'Projected spend is within 5% of target')
                                                     }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-12">
+                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                                    <p className="text-gray-500 text-lg">Loading budget data...</p>
+                                </div>
+                            )}
+                        </div>
+                                                            />
+                                                            <circle
+                                                                cx="60"
+                                                                cy="60"
+                                                                r={45}
+                                                                className="gauge-fill"
+                                                                style={{
+                                                                    stroke: client.status === 'COLD' ? '#3B82F6' : client.status === 'HOT' ? '#EF4444' : '#10B981',
+                                                                    strokeDasharray: 2 * Math.PI * 45,
+                                                                    strokeDashoffset: (2 * Math.PI * 45) - (Math.min(client.pace, 150) / 150 * (2 * Math.PI * 45))
+                                                                }}
+                                                            />
+                                                        </svg>
+                                                        <div className="gauge-text">
+                                                            <div className={`text-lg font-bold ${
+                                                                client.status === 'COLD' ? 'text-blue-600' :
+                                                                client.status === 'HOT' ? 'text-red-600' : 'text-green-600'
+                                                            }`}>
+                                                                {client.status === 'ON TRACK' ? '✓' : 
+                                                                 client.status === 'HOT' ? '🔥' : '🧊'}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500">{client.status}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Projected Spend Gauge */}
+                                                <GaugeChart
+                                                    value={Math.min((client.projectedSpend / client.budget) * 100, 130)}
+                                                    maxValue={130}
+                                                    color={client.projectedOverBudget > 10 ? '#EF4444' : 
+                                                          client.projectedOverBudget > 0 ? '#F59E0B' : 
+                                                          client.projectedOverBudget > -20 ? '#10B981' : '#3B82F6'}
+                                                    label="Projected vs Budget"
+                                                    displayValue={`£${client.projectedSpend.toFixed(0)}`}
+                                                />
+                                            </div>
+
+                                            {/* Budget Adjustment Recommendations */}
+                                            <BudgetAdjustmentCard client={client} />
+
+                                            {/* Financial Details */}
+                                            <div className="space-y-3 mt-6">
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Total amount spent so far this billing period across all platforms"
+                                                    >
+                                                        Total Spend
+                                                    </span>
+                                                    <span className="font-bold text-lg">£{client.total.toFixed(0)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Target monthly budget we aim to spend for this client"
+                                                    >
+                                                        Monthly Budget
+                                                    </span>
+                                                    <span className="font-semibold">
+                                                        £{client.budget} (£{(client.budget / client.totalDays).toFixed(0)}/day)
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Estimated final spend if current platform daily budgets remain unchanged: Current Spend + (Platform Daily Budget × Days Remaining)"
+                                                    >
+                                                        Projected Spend
+                                                    </span>
+                                                    <span className={`font-semibold ${
+                                                        client.projectedOverBudget > 5 ? 'text-red-600' :
+                                                        client.projectedOverBudget > -5 ? 'text-orange-600' : 'text-green-600'
+                                                    }`}>
+                                                        £{client.projectedSpend.toFixed(0)}
+                                                        {client.projectedOverBudget > 0 && (
+                                                            <span className="text-xs ml-1">
+                                                                (+{client.projectedOverBudget.toFixed(0)}%)
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Amount left to spend from the monthly budget target"
+                                                    >
+                                                        Remaining
+                                                    </span>
+                                                    <span className={`font-semibold ${client.remaining > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                        £{client.remaining.toFixed(0)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Current daily budget limits set on the advertising platforms (Google Ads, Meta)"
+                                                    >
+                                                        Platform Daily Budget
+                                                    </span>
+                                                    <span className="font-semibold text-cyan-600">£{client.currentDailyBudget.toFixed(0)}/day</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span 
+                                                        className="text-sm text-gray-600 cursor-help border-b border-dotted border-gray-400"
+                                                        title="Number of days remaining in the current billing period"
+                                                    >
+                                                        Days Left
+                                                    </span>
+                                                    <span className={`font-semibold ${
+                                                        client.daysLeft <= 2 ? 'text-red-600' :
+                                                        client.daysLeft <= 7 ? 'text-orange-600' : 'text-gray-700'
+                                                    }`}>
+                                                        {client.daysLeft} days
+                                                    </span>
+                                                </div>
+                                                
+                                                {/* Platform Split */}
+                                                {(client.google > 0 || client.facebook > 0) && (
+                                                    <div className="border-t pt-3 mt-3">
+                                                        <div className="text-sm font-medium text-gray-700 mb-2">
+                                                            <span 
+                                                                className="cursor-help border-b border-dotted border-gray-400"
+                                                                title="Breakdown of spending and daily budgets across Google Ads and Meta/Facebook platforms"
+                                                            >
+                                                                Platform Split
+                                                            </span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-4 text-xs">
+                                                            <div>
+                                                                <div className="flex justify-between mb-1">
+                                                                    <span className="text-gray-600">Google Spend</span>
+                                                                    <span className="font-semibold text-orange-600">£{client.google.toFixed(0)}</span>
+                                                                </div>
+                                                                {client.googleDailyBudget > 0 && (
+                                                                    <div className="flex justify-between">
+                                                                        <span className="text-gray-600">Google Budget</span>
+                                                                        <span className="font-semibold text-orange-600">£{client.googleDailyBudget.toFixed(0)}/day</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div>
+                                                                <div className="flex justify-between mb-1">
+                                                                    <span className="text-gray-600">Meta Spend</span>
+                                                                    <span className="font-semibold text-purple-600">£{client.facebook.toFixed(0)}</span>
+                                                                </div>
+                                                                {client.facebookDailyBudget > 0 && (
+                                                                    <div className="flex justify-between">
+                                                                        <span className="text-gray-600">Meta Budget</span>
+                                                                        <span className="font-semibold text-purple-600">£{client.facebookDailyBudget.toFixed(0)}/day</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Daily Spending Trend with Custom Chart */}
+                                                {Object.keys(client.dailySpendData || {}).length > 0 && (
+                                                    <div className="border-t pt-3 mt-3">
+                                                        <div className="text-sm font-medium text-gray-700 mb-2">
+                                                            <span 
+                                                                className="cursor-help border-b border-dotted border-gray-400"
+                                                                title="Daily spending trend showing actual spend vs target daily budget line"
+                                                            >
+                                                                Daily Spending Trend
+                                                            </span>
+                                                        </div>
+                                                        <SimpleLineChart
+                                                            data={
+                                                                Object.entries(client.dailySpendData || {})
+                                                                    .sort(([a], [b]) => new Date(a) - new Date(b))
+                                                                    .map(([date, spend]) => ({
+                                                                        date: new Date(date).getDate(),
+                                                                        spend: spend
+                                                                    }))
+                                                            }
+                                                            targetValue={client.budget / client.totalDays}
+                                                        />
+                                                        
+                                                        {/* Legend */}
+                                                        <div className="flex justify-end gap-3 text-xs mt-1">
+                                                            <div className="flex items-center gap-1">
+                                                                <div className="w-3 h-0.5 bg-blue-500"></div>
+                                                                <span className="text-gray-600">Daily Spend</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1">
+                                                                <div className="w-3 h-0.5 bg-yellow-500" style={{background: 'repeating-linear-gradient(to right, #F59E0B 0, #F59E0B 3px, transparent 3px, transparent 6px)'}}></div>
+                                                                <span className="text-gray-600">Target</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Days Left Alert */}
+                                            {client.daysLeft <= 1 && (
+                                                <div className="mt-4 p-3 rounded-lg text-center bg-red-100 text-red-800">
+                                                    <div className="font-bold">🚨 ENDS TODAY!</div>
+                                                    <div className="text-sm mt-1">Need £{client.requiredDaily.toFixed(0)}/day to finish on budget</div>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Pace Indicator */}
+                                            <div className="mt-4 text-center">
+                                                <div className={`text-sm font-semibold ${
+                                                    client.status === 'COLD' ? 'text-blue-600' :
+                                                    client.status === 'HOT' ? 'text-red-600' : 'text-green-600'
+                                                }`}>
+                                                    Status: {client.status} (Projected: £{client.projectedSpend.toFixed(0)} vs Target: £{client.budget})
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                    {client.status === 'HOT' ? `Projected to overspend by ${client.projectedOverBudget.toFixed(0)}%` :
+                                                     client.status === 'COLD' ? `Projected to underspend by ${Math.abs(client.projectedOverBudget).toFixed(0)}%` : 
+                                                     'Projected spend is within 5% of target'}
                                                 </div>
                                             </div>
                                         </div>
