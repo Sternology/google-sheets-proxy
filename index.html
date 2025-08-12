@@ -524,6 +524,45 @@
                     return `${currentMonthName} 1 - ${currentMonthName} ${lastDay}`;
                 }
             }, []);
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const day = today.getDate();
+                    
+                    let startMonth, startYear, endMonth, endYear;
+                    
+                    if (day >= 11) {
+                        startMonth = currentMonth;
+                        startYear = currentYear;
+                        endMonth = currentMonth + 1;
+                        endYear = currentYear;
+                    } else {
+                        startMonth = currentMonth - 1;
+                        startYear = currentYear;
+                        endMonth = currentMonth;
+                        endYear = currentYear;
+                    }
+                    
+                    if (startMonth < 0) {
+                        startMonth = 11;
+                        startYear--;
+                    }
+                    if (endMonth > 11) {
+                        endMonth = 0;
+                        endYear++;
+                    }
+                    
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[startMonth]} 11 - ${monthNames[endMonth]} 10`;
+                } else {
+                    const currentMonth = today.getMonth();
+                    const currentYear = today.getFullYear();
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const currentMonthName = monthNames[currentMonth];
+                    const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
+                    
+                    return `${currentMonthName} 1 - ${currentMonthName} ${lastDay}`;
+                }
+            }, []);
                 const today = new Date();
                 
                 if (clientType === 'apollo') {
