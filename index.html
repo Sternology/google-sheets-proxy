@@ -378,7 +378,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.14.0'; // Fixed Facebook budget calculation - always divide by 100 for pence-to-pounds conversion
+            const VERSION = 'v2.15.0'; // Fixed Apollo campaign filter - removed wildcard that was including wrong campaigns
 
             const getAvailableMonths = useCallback(() => {
                 const currentDate = new Date();
@@ -481,11 +481,11 @@
 
             const clientConfig = useMemo(() => ({
                 'Apollo': {
-                    campaigns: ['*'],
+                    campaigns: ['Apollo'], // Changed from '*' to specific campaign name
                     budget: 1221,
                     period: getCurrentPeriod('apollo'),
                     totalDays: getTotalDays('apollo'),
-                    note: 'Budget increased to £60/day each platform - showing improvement!'
+                    note: 'Budget increased to £60/day each platform - NOTE: Update campaign name if needed!'
                 },
                 'Cygnet Care': {
                     campaigns: ['Care and Support Always On Performance Max', 'Care and Support Always On - Conversions 2025', 'Care and Support Always On - Traffic - 2024'],
@@ -562,26 +562,35 @@
                 let startYear = currentYear;
                 let endYear = currentYear;
                 
-                // Determine the correct years for the period
-                if (dateRange.includes('26') && dateRange.includes('25')) {
-                    // Apollo billing period (26th to 25th)
+                // Special handling for Apollo billing (26th to 25th)
+                if (startDay === 26 && endDay === 25) {
+                    // Today is Aug 12, 2025
+                    // Current period should be Jul 26, 2025 - Aug 25, 2025
                     if (currentDay >= 26) {
-                        // We're after the 26th
+                        // We're after the 26th of current month
+                        // Period is from this month's 26th to next month's 25th
                         if (startMonthIndex === currentMonth) {
-                            // Period started this month
                             startYear = currentYear;
-                            endYear = currentMonth === 11 ? currentYear + 1 : currentYear;
+                            if (endMonthIndex < startMonthIndex) {
+                                endYear = currentYear + 1;
+                            } else {
+                                endYear = currentYear;
+                            }
                         }
                     } else {
-                        // We're before the 26th
+                        // We're before the 26th of current month (like Aug 12)
+                        // Period is from last month's 26th to this month's 25th
                         if (endMonthIndex === currentMonth) {
-                            // Period ends this month
                             endYear = currentYear;
-                            startYear = startMonthIndex === 11 && currentMonth === 0 ? currentYear - 1 : currentYear;
+                            if (startMonthIndex > endMonthIndex) {
+                                startYear = currentYear - 1;
+                            } else {
+                                startYear = currentYear;
+                            }
                         }
                     }
-                } else if (dateRange.includes('11') && dateRange.includes('10')) {
-                    // HC-One billing period (11th to 10th)
+                } else if (startDay === 11 && endDay === 10) {
+                    // HC-One billing (11th to 10th)
                     if (currentDay >= 11) {
                         if (startMonthIndex === currentMonth) {
                             startYear = currentYear;
@@ -770,6 +779,7 @@
                         let rowsMatched = 0;
                         let latestDate = null;
                         let latestDateBudgets = new Map(); // Store unique budgets from latest date
+                        let dateSpendMap = {}; // Track spend by date for debugging
                         
                         data[facebookTabName].forEach(row => {
                             const campaign = row.Campaign || '';
@@ -794,6 +804,12 @@
                             if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
                                 rowsMatched++;
                                 facebookSpend += cost;
+                                
+                                // Track spend by date for debugging
+                                if (!dateSpendMap[row.Date]) {
+                                    dateSpendMap[row.Date] = 0;
+                                }
+                                dateSpendMap[row.Date] += cost;
                                 
                                 const dateKey = row.Date;
                                 if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
@@ -822,6 +838,15 @@
                             if (latestDate) {
                                 addLog(`🔍 APOLLO Facebook budget from latest date: ${latestDate.toDateString()}`, 'info');
                                 addLog(`🔍 APOLLO Facebook adsets found: ${Array.from(latestDateBudgets.entries()).map(([k,v]) => `${k}: £${v.toFixed(2)}`).join(', ')}`, 'info');
+                            }
+                            
+                            // Show dates included in the period
+                            const dates = Object.keys(dateSpendMap).sort();
+                            if (dates.length > 0) {
+                                addLog(`🔍 APOLLO Facebook dates included: First: ${dates[0]}, Last: ${dates[dates.length - 1]}, Total days: ${dates.length}`, 'info');
+                                // Show first and last few dates with spend
+                                const sample = dates.slice(0, 3).map(d => `${d}: £${dateSpendMap[d].toFixed(2)}`).join(', ');
+                                addLog(`🔍 APOLLO Facebook first dates: ${sample}`, 'info');
                             }
                         }
                     }
