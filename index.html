@@ -378,7 +378,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.17.1'; // Added missing HC-One Scotland campaign: AL - Scotland Always on Care Search Campaign AI MAX
+            const VERSION = 'v2.18.0'; // Re-added HC-One Nursing campaign that was accidentally removed
 
             const getAvailableMonths = useCallback(() => {
                 const currentDate = new Date();
@@ -534,6 +534,17 @@
                     tabPrefix: 'HC1',
                     skipTabs: true,
                     note: '3-month campaign: Jun 26 - Sep 25'
+                },
+                'HC-One - Nursing': {
+                    campaigns: [
+                        'AL - Always On Nursing Search',
+                        'HC-One Always On Nursing – Conversion'
+                    ],
+                    budget: 1000,
+                    period: getCurrentPeriod('hc1'),
+                    totalDays: getTotalDays('hc1'),
+                    tabPrefix: 'HC1',
+                    skipTabs: true
                 }
             }), [getCurrentPeriod, getTotalDays]);
 
