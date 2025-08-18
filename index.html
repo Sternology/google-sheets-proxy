@@ -128,7 +128,7 @@
                             <span className="text-lg mr-2">{icon}</span>
                             <div className="text-xs font-medium opacity-75">{label}</div>
                         </div>
-                        {trend !== null && (
+                        {trend !== null && trend !== undefined && (
                             <span className={`text-sm font-bold ${getTrendColor()}`}>
                                 <span className={`trend-arrow ${trend > 0 ? 'up' : trend < 0 ? 'down' : ''}`}>
                                     {getTrendIcon()}
@@ -188,78 +188,11 @@
             );
         };
 
-        // Simple Line Chart Component
-        const SimpleLineChart = ({ data, targetValue }) => {
-            if (!data || data.length === 0) return null;
-
-            const maxValue = Math.max(...data.map(d => Math.max(d.spend, targetValue)));
-            const width = 200;
-            const height = 60;
-            const padding = 10;
-
-            const xStep = (width - 2 * padding) / (data.length - 1);
-            
-            const spendPoints = data.map((d, i) => {
-                const x = padding + i * xStep;
-                const y = height - padding - ((d.spend / maxValue) * (height - 2 * padding));
-                return `${x},${y}`;
-            }).join(' ');
-
-            const targetPoints = data.map((d, i) => {
-                const x = padding + i * xStep;
-                const y = height - padding - ((targetValue / maxValue) * (height - 2 * padding));
-                return `${x},${y}`;
-            }).join(' ');
-
-            return (
-                <div className="h-16 bg-gray-50 rounded flex items-center justify-center">
-                    <svg width={width} height={height} className="overflow-visible">
-                        <defs>
-                            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f3f4f6" strokeWidth="1"/>
-                            </pattern>
-                        </defs>
-                        <rect width="100%" height="100%" fill="url(#grid)" />
-                        
-                        <polyline
-                            points={targetPoints}
-                            fill="none"
-                            stroke="#F59E0B"
-                            strokeWidth="1"
-                            strokeDasharray="3,3"
-                        />
-                        
-                        <polyline
-                            points={spendPoints}
-                            fill="none"
-                            stroke="#3B82F6"
-                            strokeWidth="2"
-                        />
-                        
-                        {data.map((d, i) => {
-                            const x = padding + i * xStep;
-                            const y = height - padding - ((d.spend / maxValue) * (height - 2 * padding));
-                            return (
-                                <circle
-                                    key={i}
-                                    cx={x}
-                                    cy={y}
-                                    r="2"
-                                    fill="#3B82F6"
-                                />
-                            );
-                        })}
-                    </svg>
-                </div>
-            );
-        };
-
         // Budget Adjustment Recommendation Component
         const BudgetAdjustmentCard = ({ client }) => {
             const calculateTargetDailyBudget = () => {
                 if (client.daysLeft <= 0) return { recommended: 0, change: 0, message: "Period ended" };
                 
-                // If already at or over budget, recommend pausing or minimal spend
                 if (client.total >= client.budget) {
                     return {
                         recommended: 0,
@@ -469,38 +402,89 @@
         const ClientCard = ({ client }) => {
             const [isExpanded, setIsExpanded] = useState(false);
             
-            // Generate mock KPI data (in production, this would come from your data source)
+            // Get KPI data from client object (will be populated with real data)
             const getKPIData = () => {
-                const baseConversions = Math.floor(Math.random() * 50) + 20;
-                const cpa = (client.total / baseConversions).toFixed(2);
-                const ctr = (Math.random() * 3 + 1).toFixed(2);
+                // Determine primary conversion metric based on client type
+                let conversionLabel = 'Conversions';
+                let conversionValue = 0;
+                let conversionIcon = '🎯';
+                
+                if (client.name.includes('HC-One')) {
+                    if (client.name.includes('Nursing')) {
+                        conversionLabel = 'Nurse Apps';
+                        conversionValue = client.nursingConversions || 0;
+                        conversionIcon = '👩‍⚕️';
+                    } else if (client.name.includes('Scotland') || client.name.includes('England/Wales')) {
+                        conversionLabel = 'Care Apps';
+                        conversionValue = client.careConversions || 0;
+                        conversionIcon = '🏥';
+                    }
+                } else {
+                    // For other clients, use generic conversions if available
+                    conversionValue = client.conversions || 0;
+                }
+                
+                // Calculate CPA (Cost Per Application/Conversion)
+                const cpa = conversionValue > 0 ? (client.total / conversionValue).toFixed(2) : 'N/A';
+                
+                // Get CTR from data or use default
+                const ctr = client.ctr || '0.00';
+                
+                // Determine performance levels
+                const getConversionPerformance = () => {
+                    if (conversionValue === 0) return 'poor';
+                    if (conversionValue > 50) return 'excellent';
+                    if (conversionValue > 30) return 'good';
+                    if (conversionValue > 15) return 'average';
+                    return 'poor';
+                };
+                
+                const getCPAPerformance = () => {
+                    if (cpa === 'N/A') return 'poor';
+                    const cpaValue = parseFloat(cpa);
+                    if (cpaValue < 30) return 'excellent';
+                    if (cpaValue < 50) return 'good';
+                    if (cpaValue < 75) return 'average';
+                    return 'poor';
+                };
+                
+                const getCTRPerformance = () => {
+                    const ctrValue = parseFloat(ctr);
+                    if (ctrValue > 3) return 'excellent';
+                    if (ctrValue > 2) return 'good';
+                    if (ctrValue > 1) return 'average';
+                    return 'poor';
+                };
                 
                 return {
                     conversions: {
-                        value: baseConversions,
+                        label: conversionLabel,
+                        value: conversionValue,
                         unit: '',
-                        trend: Math.random() > 0.5 ? Math.floor(Math.random() * 20) : -Math.floor(Math.random() * 15),
-                        performance: baseConversions > 40 ? 'excellent' : baseConversions > 30 ? 'good' : baseConversions > 20 ? 'average' : 'poor',
-                        icon: '🎯'
+                        trend: null, // Can be calculated if historical data available
+                        performance: getConversionPerformance(),
+                        icon: conversionIcon
                     },
                     cpa: {
-                        value: `£${cpa}`,
+                        label: 'Cost Per ' + (conversionLabel.includes('Apps') ? 'App' : 'Conversion'),
+                        value: cpa !== 'N/A' ? `£${cpa}` : 'N/A',
                         unit: '',
-                        trend: Math.random() > 0.5 ? -Math.floor(Math.random() * 10) : Math.floor(Math.random() * 10),
-                        performance: parseFloat(cpa) < 30 ? 'excellent' : parseFloat(cpa) < 50 ? 'good' : parseFloat(cpa) < 70 ? 'average' : 'poor',
+                        trend: null,
+                        performance: getCPAPerformance(),
                         icon: '💰'
                     },
                     ctr: {
+                        label: 'Click-Through Rate',
                         value: ctr,
                         unit: '%',
-                        trend: Math.random() > 0.5 ? Math.floor(Math.random() * 15) : -Math.floor(Math.random() * 10),
-                        performance: parseFloat(ctr) > 3 ? 'excellent' : parseFloat(ctr) > 2 ? 'good' : parseFloat(ctr) > 1 ? 'average' : 'poor',
+                        trend: null,
+                        performance: getCTRPerformance(),
                         icon: '👆'
                     }
                 };
             };
             
-            const kpiData = useMemo(() => getKPIData(), [client.name]);
+            const kpiData = useMemo(() => getKPIData(), [client]);
             
             return (
                 <div className="border-2 rounded-xl p-6 transition-all hover:shadow-lg bg-green-50 border-green-300">
@@ -573,7 +557,7 @@
                     {/* KPI Scorecards */}
                     <div className="grid grid-cols-3 gap-3 mb-4">
                         <KPIScorecard
-                            label="Conversions"
+                            label={kpiData.conversions.label}
                             value={kpiData.conversions.value}
                             unit={kpiData.conversions.unit}
                             trend={kpiData.conversions.trend}
@@ -581,7 +565,7 @@
                             icon={kpiData.conversions.icon}
                         />
                         <KPIScorecard
-                            label="Cost Per Conversion"
+                            label={kpiData.cpa.label}
                             value={kpiData.cpa.value}
                             unit={kpiData.cpa.unit}
                             trend={kpiData.cpa.trend}
@@ -589,7 +573,7 @@
                             icon={kpiData.cpa.icon}
                         />
                         <KPIScorecard
-                            label="Click-Through Rate"
+                            label={kpiData.ctr.label}
                             value={kpiData.ctr.value}
                             unit={kpiData.ctr.unit}
                             trend={kpiData.ctr.trend}
@@ -692,39 +676,16 @@
 
         const ClientBudgetTable = () => {
             const [rawData, setRawData] = useState({});
+            const [conversionData, setConversionData] = useState({});
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
             const [logs, setLogs] = useState([]);
-            const [selectedMonth, setSelectedMonth] = useState('current');
 
             // Configuration
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.19.0'; // Enhanced with collapsible sections and KPI scorecards
-
-            const getAvailableMonths = useCallback(() => {
-                const currentDate = new Date();
-                const currentYear = currentDate.getFullYear();
-                const currentMonth = currentDate.getMonth();
-                
-                const months = [
-                    { value: 'current', label: 'Current Period', isCurrent: true }
-                ];
-                
-                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                                 'July', 'August', 'September', 'October', 'November', 'December'];
-                
-                for (let i = 0; i <= currentMonth; i++) {
-                    months.push({
-                        value: `${currentYear}-${String(i + 1).padStart(2, '0')}`,
-                        label: `${monthNames[i]} ${currentYear}`,
-                        isCurrent: false
-                    });
-                }
-                
-                return months.reverse();
-            }, []);
+            const VERSION = 'v2.20.0'; // Real conversion data integration
 
             const getCurrentPeriod = useCallback((clientType) => {
                 const today = new Date();
@@ -739,7 +700,6 @@
                     let endYear = currentYear;
                     
                     if (day >= 26) {
-                        // We're after the 26th, so period is from this month's 26th to next month's 25th
                         startMonth = currentMonth;
                         endMonth = currentMonth + 1;
                         if (endMonth > 11) {
@@ -747,7 +707,6 @@
                             endYear = currentYear + 1;
                         }
                     } else {
-                        // We're before the 26th, so period is from last month's 26th to this month's 25th
                         startMonth = currentMonth - 1;
                         endMonth = currentMonth;
                         if (startMonth < 0) {
@@ -757,14 +716,9 @@
                     }
                     
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                    
                     const periodString = `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
-                    console.log(`🔍 Apollo Period Calculation: Today is ${today.toDateString()}, Period: ${periodString}`);
-                    console.log(`🔍 Apollo Period Years: Start Year: ${startYear}, End Year: ${endYear}`);
-                    
                     return periodString;
                 } else if (clientType === 'hc1-scotland') {
-                    // Fixed period for HC-One Scotland: June 26 - September 25
                     return 'Jun 26 - Sep 25';
                 } else if (clientType === 'hc1') {
                     const currentMonth = today.getMonth();
@@ -800,7 +754,6 @@
                 if (clientType === 'apollo' || clientType === 'hc1') {
                     return 30;
                 } else if (clientType === 'hc1-scotland') {
-                    // June 26 to September 25 = 92 days total
                     return 92;
                 } else {
                     const today = new Date();
@@ -811,8 +764,8 @@
             const clientConfig = useMemo(() => ({
                 'Apollo': {
                     campaigns: [
-                        'Always on HCA & Support Works National Search',  // Google campaign
-                        'North West Conversions Campaign April 30th'       // Facebook campaign
+                        'Always on HCA & Support Works National Search',
+                        'North West Conversions Campaign April 30th'
                     ],
                     budget: 1221,
                     period: getCurrentPeriod('apollo'),
@@ -848,12 +801,12 @@
                 'HC-One - Scotland': {
                     campaigns: [
                         'AL - Scotland Always on Care Search Campaign',
-                        'AL - Scotland Always on Care Search Campaign AI MAX',  // Added missing campaign
+                        'AL - Scotland Always on Care Search Campaign AI MAX',
                         'Always on Care – Scotland'
                     ],
-                    budget: 3000,  // Changed from 1000 to 3000 for 3-month campaign
-                    period: getCurrentPeriod('hc1-scotland'),  // Fixed period Jun 26 - Sep 25
-                    totalDays: getTotalDays('hc1-scotland'),  // 92 days total
+                    budget: 3000,
+                    period: getCurrentPeriod('hc1-scotland'),
+                    totalDays: getTotalDays('hc1-scotland'),
                     tabPrefix: 'HC1',
                     skipTabs: true,
                     note: '3-month campaign: Jun 26 - Sep 25'
@@ -895,7 +848,6 @@
                     'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
                 };
                 
-                // Parse the start and end month/day from the period string
                 const [startMonthName, startDayStr] = parts[0].trim().split(' ');
                 const [endMonthName, endDayStr] = parts[1].trim().split(' ');
                 
@@ -907,19 +859,11 @@
                 let startYear = currentYear;
                 let endYear = currentYear;
                 
-                // Special handling for HC-One Scotland fixed campaign (Jun 26 - Sep 25)
                 if (startMonthIndex === 5 && startDay === 26 && endMonthIndex === 8 && endDay === 25) {
-                    // This is the HC-One Scotland campaign - always 2025
                     startYear = 2025;
                     endYear = 2025;
-                }
-                // Special handling for Apollo billing (26th to 25th)
-                else if (startDay === 26 && endDay === 25) {
-                    // Today is Aug 17, 2025
-                    // Current period should be Jul 26, 2025 - Aug 25, 2025
+                } else if (startDay === 26 && endDay === 25) {
                     if (currentDay >= 26) {
-                        // We're after the 26th of current month
-                        // Period is from this month's 26th to next month's 25th
                         if (startMonthIndex === currentMonth) {
                             startYear = currentYear;
                             if (endMonthIndex < startMonthIndex) {
@@ -929,8 +873,6 @@
                             }
                         }
                     } else {
-                        // We're before the 26th of current month (like Aug 17)
-                        // Period is from last month's 26th to this month's 25th
                         if (endMonthIndex === currentMonth) {
                             endYear = currentYear;
                             if (startMonthIndex > endMonthIndex) {
@@ -941,7 +883,6 @@
                         }
                     }
                 } else if (startDay === 11 && endDay === 10) {
-                    // HC-One billing (11th to 10th)
                     if (currentDay >= 11) {
                         if (startMonthIndex === currentMonth) {
                             startYear = currentYear;
@@ -958,18 +899,11 @@
                 const startDate = new Date(startYear, startMonthIndex, startDay);
                 const endDate = new Date(endYear, endMonthIndex, endDay);
                 
-                console.log(`🔍 Period Date Range: ${dateRange}`);
-                console.log(`🔍 Parsed Dates: ${startDate.toDateString()} to ${endDate.toDateString()}`);
-                console.log(`🔍 Today: ${today.toDateString()}`);
-                
                 return { start: startDate, end: endDate };
             };
 
             const isDateInRange = (date, startDate, endDate) => {
-                // Parse the date string to ensure consistency
                 const checkDate = new Date(date);
-                
-                // Set all dates to midnight for consistent comparison
                 const normalizedCheck = new Date(checkDate.getFullYear(), checkDate.getMonth(), checkDate.getDate());
                 const normalizedStart = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
                 const normalizedEnd = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
@@ -985,13 +919,17 @@
 
                 try {
                     const allData = {};
+                    const conversions = {};
+                    
+                    // Load standard tabs
                     const expectedTabs = ['Apollo Google', 'Apollo FB', 'Cygnet Google', 'Cygnet FB', 'HC1 Google', 'HC1 FB'];
 
                     for (const tabName of expectedTabs) {
                         try {
                             addLog(`Fetching data from tab: ${tabName}`, 'info');
                             
-                            const range = tabName.includes('FB') ? `${tabName}!A:E` : `${tabName}!A:F`;
+                            // Adjust range to include CTR and conversion columns
+                            const range = tabName.includes('FB') ? `${tabName}!A:G` : `${tabName}!A:F`;
                             const url = `${PROXY_URL}?spreadsheetId=${SPREADSHEET_ID}&range=${encodeURIComponent(range)}&apiKey=${API_KEY}`;
                             
                             const response = await fetch(url);
@@ -1006,6 +944,8 @@
                                     const tabData = rows.map(row => {
                                         const rowData = {};
                                         headers.forEach((header, index) => {
+                                            const headerLower = header.toLowerCase();
+                                            
                                             if (tabName.includes('FB')) {
                                                 if (header === 'Campaign name') {
                                                     rowData['Campaign'] = row[index] || '';
@@ -1015,12 +955,20 @@
                                                     rowData['AdsetName'] = row[index] || '';
                                                 } else if (header === 'Adset daily budget') {
                                                     rowData['DailyBudget'] = row[index] || '';
+                                                } else if (headerLower.includes('ctr')) {
+                                                    rowData['CTR'] = row[index] || '';
+                                                } else if (headerLower.includes('care') && headerLower.includes('app')) {
+                                                    rowData['CareApplications'] = row[index] || '';
+                                                } else if (headerLower.includes('nurs') && headerLower.includes('app')) {
+                                                    rowData['NursingApplications'] = row[index] || '';
                                                 } else {
                                                     rowData[header] = row[index] || '';
                                                 }
                                             } else {
                                                 if (header === 'Budget Amount') {
                                                     rowData['DailyBudget'] = row[index] || '';
+                                                } else if (headerLower.includes('ctr')) {
+                                                    rowData['CTR'] = row[index] || '';
                                                 } else {
                                                     rowData[header] = row[index] || '';
                                                 }
@@ -1038,7 +986,39 @@
                         }
                     }
 
+                    // Load HC1 Google Conversions tab
+                    try {
+                        addLog('Fetching HC1 Google Conversions data...', 'info');
+                        const conversionRange = 'HC1 Google Conversions!A:D';
+                        const url = `${PROXY_URL}?spreadsheetId=${SPREADSHEET_ID}&range=${encodeURIComponent(conversionRange)}&apiKey=${API_KEY}`;
+                        
+                        const response = await fetch(url);
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            
+                            if (data.values && data.values.length > 1) {
+                                const headers = data.values[0];
+                                const rows = data.values.slice(1);
+                                
+                                const conversionData = rows.map(row => {
+                                    const rowData = {};
+                                    headers.forEach((header, index) => {
+                                        rowData[header] = row[index] || '';
+                                    });
+                                    return rowData;
+                                });
+                                
+                                conversions['HC1 Google Conversions'] = conversionData;
+                                addLog(`✅ Loaded ${conversionData.length} rows from HC1 Google Conversions`, 'success');
+                            }
+                        }
+                    } catch (convError) {
+                        addLog(`⚠️ Could not load HC1 Google Conversions: ${convError.message}`, 'warning');
+                    }
+
                     setRawData(allData);
+                    setConversionData(conversions);
                     addLog(`🎉 Data loading complete! Loaded ${Object.keys(allData).length} tabs`, 'success');
 
                 } catch (err) {
@@ -1049,7 +1029,7 @@
                 }
             };
 
-            const processRawData = useCallback((data) => {
+            const processRawData = useCallback((data, conversions) => {
                 const today = new Date();
                 const processedClients = [];
 
@@ -1065,14 +1045,16 @@
 
                     let googleSpend = 0;
                     let facebookSpend = 0;
-                    let dailySpend = {};
                     let googleDailyBudget = 0;
                     let facebookDailyBudget = 0;
+                    let totalCTR = 0;
+                    let ctrCount = 0;
+                    let careConversions = 0;
+                    let nursingConversions = 0;
 
                     // Process Google data
                     const googleTabName = `${tabPrefix} Google`;
                     if (data[googleTabName]) {
-                        let rowsMatched = 0;
                         let latestDate = null;
                         let latestDateBudget = 0;
                         
@@ -1080,28 +1062,26 @@
                             const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
                             const dailyBudget = parseFloat(row.DailyBudget) || 0;
+                            const ctr = row.CTR ? parseFloat(row.CTR.replace('%', '')) : 0;
 
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
 
                             if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
-                                rowsMatched++;
                                 googleSpend += cost;
                                 
-                                const dateKey = row.Date;
-                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
-                                dailySpend[dateKey] += cost;
+                                if (ctr > 0) {
+                                    totalCTR += ctr;
+                                    ctrCount++;
+                                }
 
-                                // Track the budget from the most recent date
                                 const rowDate = new Date(row.Date);
                                 if (!latestDate || rowDate > latestDate) {
                                     latestDate = rowDate;
-                                    latestDateBudget = 0; // Reset for new date
+                                    latestDateBudget = 0;
                                 }
                                 
                                 if (rowDate.getTime() === latestDate.getTime() && dailyBudget > 0) {
-                                    // For Apollo, we know it's one campaign, so just take the budget
-                                    // For others, we might need to sum budgets on the same day
                                     if (clientName === 'Apollo') {
                                         latestDateBudget = dailyBudget;
                                     } else {
@@ -1112,39 +1092,43 @@
                         });
 
                         googleDailyBudget = latestDateBudget;
-                        
-                        if (clientName === 'Apollo') {
-                            addLog(`🔍 APOLLO Google: ${rowsMatched} rows matched, £${googleSpend.toFixed(2)} spend, £${googleDailyBudget.toFixed(2)} daily budget`, 'info');
+                    }
+
+                    // Process Google Conversions for HC-One clients
+                    if (clientName.includes('HC-One') && conversions['HC1 Google Conversions']) {
+                        conversions['HC1 Google Conversions'].forEach(row => {
+                            const campaign = row.Campaign || '';
+                            const matchesCampaign = config.campaigns.some(c => campaign === c);
                             
-                            // Show date range being used
-                            addLog(`🔍 APOLLO Date Range: ${periodStart.toDateString()} to ${periodEnd.toDateString()}`, 'info');
-                            if (latestDate) {
-                                addLog(`🔍 APOLLO Google budget from latest date: ${latestDate.toDateString()}`, 'info');
+                            if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
+                                const nursingValue = parseFloat(row['HC1 Jobs (web) completed_application_Nursing']) || 0;
+                                const careValue = parseFloat(row['HC1 Jobs (web) completed_application_Care']) || 0;
+                                
+                                nursingConversions += nursingValue;
+                                careConversions += careValue;
                             }
-                        }
+                        });
                     }
 
                     // Process Facebook data
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
-                        let rowsMatched = 0;
                         let latestDate = null;
-                        let latestDateBudgets = new Map(); // Store unique budgets from latest date
-                        let dateSpendMap = {}; // Track spend by date for debugging
+                        let latestDateBudgets = new Map();
                         
                         data[facebookTabName].forEach(row => {
                             const campaign = row.Campaign || '';
                             const cost = parseFloat(row.Cost) || 0;
                             const rawBudget = row.DailyBudget || 0;
+                            const ctr = row.CTR ? parseFloat(row.CTR.replace('%', '')) : 0;
+                            const fbCareApps = parseFloat(row.CareApplications) || 0;
+                            const fbNursingApps = parseFloat(row.NursingApplications) || 0;
                             
-                            // Facebook budgets in the data are in pence/cents, need to divide by 100
                             let dailyBudget = 0;
                             if (rawBudget) {
                                 const cleanBudget = String(rawBudget).replace(/,/g, '');
                                 const numericBudget = parseFloat(cleanBudget);
-                                
                                 if (!isNaN(numericBudget)) {
-                                    // All Facebook budgets need to be divided by 100 to get GBP
                                     dailyBudget = numericBudget / 100;
                                 }
                             }
@@ -1153,53 +1137,31 @@
                                                  config.campaigns.some(c => campaign === c);
 
                             if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
-                                rowsMatched++;
                                 facebookSpend += cost;
                                 
-                                // Track spend by date for debugging
-                                if (!dateSpendMap[row.Date]) {
-                                    dateSpendMap[row.Date] = 0;
+                                if (ctr > 0) {
+                                    totalCTR += ctr;
+                                    ctrCount++;
                                 }
-                                dateSpendMap[row.Date] += cost;
                                 
-                                const dateKey = row.Date;
-                                if (!dailySpend[dateKey]) dailySpend[dateKey] = 0;
-                                dailySpend[dateKey] += cost;
+                                // Add Facebook conversions
+                                careConversions += fbCareApps;
+                                nursingConversions += fbNursingApps;
 
-                                // Track the budget from the most recent date
                                 const rowDate = new Date(row.Date);
                                 if (!latestDate || rowDate > latestDate) {
                                     latestDate = rowDate;
-                                    latestDateBudgets.clear(); // Reset for new date
+                                    latestDateBudgets.clear();
                                 }
                                 
                                 if (rowDate.getTime() === latestDate.getTime() && dailyBudget > 0) {
-                                    // Store unique budgets for this adset
                                     const adsetKey = `${row.AdsetName || 'unknown'}`;
                                     latestDateBudgets.set(adsetKey, dailyBudget);
                                 }
                             }
                         });
 
-                        // Sum all unique adset budgets from the latest date
                         facebookDailyBudget = Array.from(latestDateBudgets.values()).reduce((sum, budget) => sum + budget, 0);
-                        
-                        if (clientName === 'Apollo') {
-                            addLog(`🔍 APOLLO Facebook: ${rowsMatched} rows matched, £${facebookSpend.toFixed(2)} spend, £${facebookDailyBudget.toFixed(2)} daily budget`, 'info');
-                            if (latestDate) {
-                                addLog(`🔍 APOLLO Facebook budget from latest date: ${latestDate.toDateString()}`, 'info');
-                                addLog(`🔍 APOLLO Facebook adsets found: ${Array.from(latestDateBudgets.entries()).map(([k,v]) => `${k}: £${v.toFixed(2)}`).join(', ')}`, 'info');
-                            }
-                            
-                            // Show dates included in the period
-                            const dates = Object.keys(dateSpendMap).sort();
-                            if (dates.length > 0) {
-                                addLog(`🔍 APOLLO Facebook dates included: First: ${dates[0]}, Last: ${dates[dates.length - 1]}, Total days: ${dates.length}`, 'info');
-                                // Show first and last few dates with spend
-                                const sample = dates.slice(0, 3).map(d => `${d}: £${dateSpendMap[d].toFixed(2)}`).join(', ');
-                                addLog(`🔍 APOLLO Facebook first dates: ${sample}`, 'info');
-                            }
-                        }
                     }
 
                     const total = googleSpend + facebookSpend;
@@ -1208,10 +1170,7 @@
                     const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
                     const projectedSpend = total + (currentDailyBudget * daysLeft);
                     const projectedOverBudget = ((projectedSpend / config.budget) - 1) * 100;
-
-                    if (clientName === 'Apollo') {
-                        addLog(`🔍 APOLLO Final: Total £${total.toFixed(2)}, Budget £${config.budget}, Days left ${daysLeft}, Projected £${projectedSpend.toFixed(2)}`, 'info');
-                    }
+                    const avgCTR = ctrCount > 0 ? (totalCTR / ctrCount).toFixed(2) : '0.00';
 
                     let status = 'ON TRACK';
                     if (total >= config.budget) {
@@ -1239,7 +1198,10 @@
                         facebookDailyBudget: facebookDailyBudget,
                         projectedSpend: projectedSpend,
                         projectedOverBudget: projectedOverBudget,
-                        dailySpendData: dailySpend,
+                        ctr: avgCTR,
+                        careConversions: careConversions,
+                        nursingConversions: nursingConversions,
+                        conversions: careConversions + nursingConversions, // Total conversions
                         isHistorical: false
                     });
                 });
@@ -1252,8 +1214,8 @@
             }, []);
 
             const dataToUse = useMemo(() => {
-                return Object.keys(rawData).length > 0 ? processRawData(rawData) : [];
-            }, [rawData, processRawData]);
+                return Object.keys(rawData).length > 0 ? processRawData(rawData, conversionData) : [];
+            }, [rawData, conversionData, processRawData]);
 
             const totalSpend = dataToUse.reduce((sum, client) => sum + client.total, 0);
             const totalDailyBudget = dataToUse.reduce((sum, client) => sum + client.currentDailyBudget, 0);
@@ -1275,4 +1237,81 @@
                                         <div className="text-2xl font-bold text-blue-600">£{totalSpend.toFixed(0)}</div>
                                         <div className="text-sm text-blue-700">Total Spend</div>
                                     </div>
-                                    <div className="bg-
+                                    <div className="bg-cyan-50 p-4 rounded-lg">
+                                        <div className="text-2xl font-bold text-cyan-600">£{totalDailyBudget.toFixed(0)}</div>
+                                        <div className="text-sm text-cyan-700">Daily Budget</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 flex flex-wrap items-center gap-4">
+                                <button
+                                    onClick={loadData}
+                                    disabled={loading}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm"
+                                >
+                                    {loading ? 'Loading...' : '🔄 Refresh Data'}
+                                </button>
+                                <button
+                                    onClick={clearLogs}
+                                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                                >
+                                    Clear Logs
+                                </button>
+                            </div>
+                            
+                            <div className="mt-4">
+                                {loading && <p className="text-sm text-blue-600 mt-1">🔄 Loading data...</p>}
+                                {error && <p className="text-sm text-red-600 mt-1">❌ {error}</p>}
+                                {Object.keys(rawData).length > 0 && <p className="text-sm text-green-600 mt-1">✅ Processing {Object.keys(rawData).length} data tabs</p>}
+                                <p className="text-sm text-gray-600 mt-1">🔧 v2.20.0: Real conversion data integration with collapsible sections</p>
+                            </div>
+
+                            {logs.length > 0 && (
+                                <div className="mt-4">
+                                    <h4 className="text-sm font-medium text-gray-800 mb-2">System Logs:</h4>
+                                    <div className="bg-gray-900 text-green-400 p-3 rounded max-h-32 overflow-y-auto font-mono text-xs">
+                                        {logs.slice(-20).map((log, index) => (
+                                            <div
+                                                key={index}
+                                                className={
+                                                    log.type === 'error' ? 'text-red-400' : 
+                                                    log.type === 'success' ? 'text-green-400' : 
+                                                    log.type === 'warning' ? 'text-yellow-400' :
+                                                    'text-blue-400'
+                                                }
+                                            >
+                                                [{log.timestamp}] {log.message}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow-sm p-6">
+                            <h2 className="text-2xl font-bold mb-6 text-center">Budget Performance Dashboard</h2>
+                            
+                            {dataToUse.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {dataToUse.map(client => (
+                                        <ClientCard key={client.name} client={client} />
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-12">
+                                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                                    <p className="text-gray-500 text-lg">Loading budget data...</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ClientBudgetTable />);
+    </script>
+</body>
+</html>
