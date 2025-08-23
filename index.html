@@ -77,15 +77,46 @@
             background: currentColor;
             opacity: 0.3;
         }
+        
+        /* Trend indicator animations */
+        @keyframes pulseGreen {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        @keyframes pulseRed {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .trend-positive {
+            animation: pulseGreen 2s infinite;
+        }
+        
+        .trend-negative {
+            animation: pulseRed 2s infinite;
+        }
+        
         .trend-arrow {
             display: inline-block;
             transition: transform 0.2s ease;
+            font-weight: bold;
         }
+        
         .trend-arrow.up {
             transform: translateY(-1px);
         }
+        
         .trend-arrow.down {
             transform: translateY(1px);
+        }
+        
+        /* Improved trend background */
+        .kpi-badge.trend-up {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(16, 185, 129, 0.1) 100%);
+        }
+        
+        .kpi-badge.trend-down {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(239, 68, 68, 0.1) 100%);
         }
     </style>
 </head>
@@ -95,8 +126,8 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useCallback } = React;
         
-        // KPI Scorecard Component
-        const KPIScorecard = ({ label, value, unit, trend, performance, icon }) => {
+        // KPI Scorecard Component with Enhanced Trend Display
+        const KPIScorecard = ({ label, value, unit, trend, performance, icon, invertTrend = false, previousValue = null }) => {
             const getPerformanceColor = () => {
                 switch(performance) {
                     case 'excellent': return 'text-green-600 bg-green-50 border-green-200';
@@ -107,33 +138,43 @@
                 }
             };
 
-            const getTrendIcon = () => {
-                if (!trend) return null;
-                if (trend > 0) return '↑';
-                if (trend < 0) return '↓';
-                return '→';
+            // For CPA, lower is better, so invert the colors
+            const getTrendColor = () => {
+                if (trend === null || trend === undefined || trend === 0) return 'text-gray-400';
+                
+                const isPositiveTrend = invertTrend ? trend < 0 : trend > 0;
+                return isPositiveTrend ? 'text-green-600 trend-positive' : 'text-red-600 trend-negative';
             };
 
-            const getTrendColor = () => {
-                if (!trend) return 'text-gray-400';
-                if (trend > 0) return 'text-green-500';
-                if (trend < 0) return 'text-red-500';
-                return 'text-gray-500';
+            const getTrendIcon = () => {
+                if (trend === null || trend === undefined || trend === 0) return '→';
+                return trend > 0 ? '↑' : '↓';
+            };
+            
+            const getTrendClass = () => {
+                if (trend === null || trend === undefined || trend === 0) return '';
+                const isPositiveTrend = invertTrend ? trend < 0 : trend > 0;
+                return isPositiveTrend ? 'trend-up' : 'trend-down';
+            };
+
+            const formatTrend = () => {
+                if (trend === null || trend === undefined) return null;
+                return Math.abs(trend).toFixed(0);
             };
 
             return (
-                <div className={`kpi-badge p-3 rounded-lg border ${getPerformanceColor()} transition-all hover:shadow-md`}>
+                <div className={`kpi-badge p-3 rounded-lg border ${getPerformanceColor()} transition-all hover:shadow-md ${getTrendClass()}`}>
                     <div className="flex items-start justify-between mb-1">
                         <div className="flex items-center">
                             <span className="text-lg mr-2">{icon}</span>
                             <div className="text-xs font-medium opacity-75">{label}</div>
                         </div>
                         {trend !== null && trend !== undefined && (
-                            <span className={`text-sm font-bold ${getTrendColor()}`}>
+                            <span className={`text-sm font-bold ${getTrendColor()}`} title={previousValue ? `Previous: ${previousValue}` : ''}>
                                 <span className={`trend-arrow ${trend > 0 ? 'up' : trend < 0 ? 'down' : ''}`}>
                                     {getTrendIcon()}
                                 </span>
-                                {Math.abs(trend)}%
+                                {formatTrend()}%
                             </span>
                         )}
                     </div>
@@ -141,6 +182,11 @@
                         <span className="text-xl font-bold">{value}</span>
                         {unit && <span className="text-xs ml-1 opacity-75">{unit}</span>}
                     </div>
+                    {previousValue && (
+                        <div className="text-xs opacity-60 mt-1">
+                            vs {previousValue} prev period
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -402,7 +448,7 @@
         const ClientCard = ({ client }) => {
             const [isExpanded, setIsExpanded] = useState(false);
             
-            // Get KPI data from client object (will be populated with real data)
+            // Get KPI data from client object with trend comparisons
             const getKPIData = () => {
                 // Determine primary conversion metric based on client type
                 let conversionLabel = 'Conversions';
@@ -429,6 +475,28 @@
                 
                 // Get CTR from data or use default
                 const ctr = client.ctr || '0.00';
+                
+                // Calculate trends from previous period data
+                const prevConversions = client.previousPeriod?.conversions || 
+                                      client.previousPeriod?.nursingConversions || 
+                                      client.previousPeriod?.careConversions || 0;
+                const prevCPA = client.previousPeriod?.cpa || null;
+                const prevCTR = client.previousPeriod?.ctr || null;
+                
+                // Calculate percentage changes
+                const conversionTrend = prevConversions > 0 ? 
+                    ((conversionValue - prevConversions) / prevConversions * 100) : null;
+                
+                const cpaTrend = prevCPA && cpa !== 'N/A' ? 
+                    ((parseFloat(cpa) - prevCPA) / prevCPA * 100) : null;
+                
+                const ctrTrend = prevCTR ? 
+                    ((parseFloat(ctr) - prevCTR) / prevCTR * 100) : null;
+                
+                // Format previous values for display
+                const prevConversionDisplay = prevConversions > 0 ? prevConversions.toString() : null;
+                const prevCPADisplay = prevCPA ? `£${prevCPA.toFixed(2)}` : null;
+                const prevCTRDisplay = prevCTR ? `${prevCTR.toFixed(2)}%` : null;
                 
                 // Determine performance levels
                 const getConversionPerformance = () => {
@@ -461,7 +529,8 @@
                         label: conversionLabel,
                         value: conversionValue,
                         unit: '',
-                        trend: null, // Can be calculated if historical data available
+                        trend: conversionTrend,
+                        previousValue: prevConversionDisplay,
                         performance: getConversionPerformance(),
                         icon: conversionIcon
                     },
@@ -469,15 +538,18 @@
                         label: 'Cost Per ' + (conversionLabel.includes('Apps') ? 'App' : 'Conversion'),
                         value: cpa !== 'N/A' ? `£${cpa}` : 'N/A',
                         unit: '',
-                        trend: null,
+                        trend: cpaTrend,
+                        previousValue: prevCPADisplay,
                         performance: getCPAPerformance(),
-                        icon: '💰'
+                        icon: '💰',
+                        invertTrend: true // Lower is better for CPA
                     },
                     ctr: {
                         label: 'Click-Through Rate',
                         value: ctr,
                         unit: '%',
-                        trend: null,
+                        trend: ctrTrend,
+                        previousValue: prevCTRDisplay,
                         performance: getCTRPerformance(),
                         icon: '👆'
                     }
@@ -554,13 +626,14 @@
                         />
                     </div>
 
-                    {/* KPI Scorecards */}
+                    {/* KPI Scorecards with Trends */}
                     <div className="grid grid-cols-3 gap-3 mb-4">
                         <KPIScorecard
                             label={kpiData.conversions.label}
                             value={kpiData.conversions.value}
                             unit={kpiData.conversions.unit}
                             trend={kpiData.conversions.trend}
+                            previousValue={kpiData.conversions.previousValue}
                             performance={kpiData.conversions.performance}
                             icon={kpiData.conversions.icon}
                         />
@@ -569,14 +642,17 @@
                             value={kpiData.cpa.value}
                             unit={kpiData.cpa.unit}
                             trend={kpiData.cpa.trend}
+                            previousValue={kpiData.cpa.previousValue}
                             performance={kpiData.cpa.performance}
                             icon={kpiData.cpa.icon}
+                            invertTrend={kpiData.cpa.invertTrend}
                         />
                         <KPIScorecard
                             label={kpiData.ctr.label}
                             value={kpiData.ctr.value}
                             unit={kpiData.ctr.unit}
                             trend={kpiData.ctr.trend}
+                            previousValue={kpiData.ctr.previousValue}
                             performance={kpiData.ctr.performance}
                             icon={kpiData.ctr.icon}
                         />
@@ -685,7 +761,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.20.0'; // Real conversion data integration
+            const VERSION = 'v2.21.0'; // Period-over-period trend comparison
 
             const getCurrentPeriod = useCallback((clientType) => {
                 const today = new Date();
@@ -750,6 +826,41 @@
                 }
             }, []);
 
+            const getPreviousPeriodDates = useCallback((clientType, currentPeriodStart, currentPeriodEnd, daysElapsed) => {
+                // Calculate the previous period dates based on client type
+                // We want the same number of days elapsed in the previous period
+                
+                if (clientType === 'hc1-scotland') {
+                    // Special case: HC-One Scotland doesn't have a previous period (it's a fixed campaign)
+                    return { start: null, end: null };
+                }
+                
+                const prevPeriodEnd = new Date(currentPeriodStart);
+                prevPeriodEnd.setDate(prevPeriodEnd.getDate() - 1); // Day before current period start
+                
+                const prevPeriodStart = new Date(prevPeriodEnd);
+                
+                if (clientType === 'apollo') {
+                    // 26th to 25th cycle
+                    prevPeriodStart.setMonth(prevPeriodStart.getMonth() - 1);
+                    prevPeriodStart.setDate(26);
+                } else if (clientType === 'hc1') {
+                    // 11th to 10th cycle
+                    prevPeriodStart.setMonth(prevPeriodStart.getMonth() - 1);
+                    prevPeriodStart.setDate(11);
+                } else {
+                    // Calendar month
+                    prevPeriodStart.setMonth(prevPeriodStart.getMonth() - 1);
+                    prevPeriodStart.setDate(1);
+                }
+                
+                // Adjust end date to match the number of days elapsed
+                const adjustedPrevEnd = new Date(prevPeriodStart);
+                adjustedPrevEnd.setDate(adjustedPrevEnd.getDate() + daysElapsed - 1);
+                
+                return { start: prevPeriodStart, end: adjustedPrevEnd };
+            }, []);
+
             const getTotalDays = useCallback((clientType) => {
                 if (clientType === 'apollo' || clientType === 'hc1') {
                     return 30;
@@ -770,6 +881,7 @@
                     budget: 1221,
                     period: getCurrentPeriod('apollo'),
                     totalDays: getTotalDays('apollo'),
+                    clientType: 'apollo',
                     note: 'Budget increased to £60/day each platform'
                 },
                 'Cygnet Care': {
@@ -777,6 +889,7 @@
                     budget: 800,
                     period: getCurrentPeriod('standard'),
                     totalDays: getTotalDays('standard'),
+                    clientType: 'standard',
                     tabPrefix: 'Cygnet'
                 },
                 'Cygnet Nursing': {
@@ -784,6 +897,7 @@
                     budget: 800,
                     period: getCurrentPeriod('standard'),
                     totalDays: getTotalDays('standard'),
+                    clientType: 'standard',
                     tabPrefix: 'Cygnet',
                     skipTabs: true
                 },
@@ -796,6 +910,7 @@
                     budget: 1800,
                     period: getCurrentPeriod('hc1'),
                     totalDays: getTotalDays('hc1'),
+                    clientType: 'hc1',
                     tabPrefix: 'HC1'
                 },
                 'HC-One - Scotland': {
@@ -807,6 +922,7 @@
                     budget: 3000,
                     period: getCurrentPeriod('hc1-scotland'),
                     totalDays: getTotalDays('hc1-scotland'),
+                    clientType: 'hc1-scotland',
                     tabPrefix: 'HC1',
                     skipTabs: true,
                     note: '3-month campaign: Jun 26 - Sep 25'
@@ -819,6 +935,7 @@
                     budget: 1000,
                     period: getCurrentPeriod('hc1'),
                     totalDays: getTotalDays('hc1'),
+                    clientType: 'hc1',
                     tabPrefix: 'HC1',
                     skipTabs: true
                 }
@@ -1029,6 +1146,97 @@
                 }
             };
 
+            const processMetricsForPeriod = (data, conversions, config, periodStart, periodEnd, tabPrefix, clientName) => {
+                let googleSpend = 0;
+                let facebookSpend = 0;
+                let totalCTR = 0;
+                let ctrCount = 0;
+                let careConversions = 0;
+                let nursingConversions = 0;
+
+                // Process Google data
+                const googleTabName = `${tabPrefix} Google`;
+                if (data[googleTabName]) {
+                    data[googleTabName].forEach(row => {
+                        const campaign = row.Campaign || '';
+                        const cost = parseFloat(row.Cost) || 0;
+                        const ctr = row.CTR ? parseFloat(row.CTR.replace('%', '')) : 0;
+
+                        const matchesCampaign = config.campaigns.includes('*') || 
+                                             config.campaigns.some(c => campaign === c);
+
+                        if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
+                            googleSpend += cost;
+                            
+                            if (ctr > 0) {
+                                totalCTR += ctr;
+                                ctrCount++;
+                            }
+                        }
+                    });
+                }
+
+                // Process Google Conversions for HC-One clients
+                if (clientName.includes('HC-One') && conversions['HC1 Google Conversions']) {
+                    conversions['HC1 Google Conversions'].forEach(row => {
+                        const campaign = row.Campaign || '';
+                        const matchesCampaign = config.campaigns.some(c => campaign === c);
+                        
+                        if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
+                            const nursingValue = parseFloat(row['HC1 Jobs (web) completed_application_Nursing']) || 0;
+                            const careValue = parseFloat(row['HC1 Jobs (web) completed_application_Care']) || 0;
+                            
+                            nursingConversions += nursingValue;
+                            careConversions += careValue;
+                        }
+                    });
+                }
+
+                // Process Facebook data
+                const facebookTabName = `${tabPrefix} FB`;
+                if (data[facebookTabName]) {
+                    data[facebookTabName].forEach(row => {
+                        const campaign = row.Campaign || '';
+                        const cost = parseFloat(row.Cost) || 0;
+                        const ctr = row.CTR ? parseFloat(row.CTR.replace('%', '')) : 0;
+                        const fbCareApps = parseFloat(row.CareApplications) || 0;
+                        const fbNursingApps = parseFloat(row.NursingApplications) || 0;
+
+                        const matchesCampaign = config.campaigns.includes('*') || 
+                                             config.campaigns.some(c => campaign === c);
+
+                        if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
+                            facebookSpend += cost;
+                            
+                            if (ctr > 0) {
+                                totalCTR += ctr;
+                                ctrCount++;
+                            }
+                            
+                            // Add Facebook conversions
+                            careConversions += fbCareApps;
+                            nursingConversions += fbNursingApps;
+                        }
+                    });
+                }
+
+                const total = googleSpend + facebookSpend;
+                const avgCTR = ctrCount > 0 ? totalCTR / ctrCount : 0;
+                const totalConversions = careConversions + nursingConversions;
+                const cpa = totalConversions > 0 ? total / totalConversions : null;
+
+                return {
+                    total,
+                    googleSpend,
+                    facebookSpend,
+                    ctr: avgCTR,
+                    careConversions,
+                    nursingConversions,
+                    conversions: totalConversions,
+                    cpa
+                };
+            };
+
             const processRawData = useCallback((data, conversions) => {
                 const today = new Date();
                 const processedClients = [];
@@ -1043,16 +1251,34 @@
                     const daysElapsed = Math.ceil((today - periodStart) / (1000 * 60 * 60 * 24)) + 1;
                     const daysLeft = Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)) + 1);
 
-                    let googleSpend = 0;
-                    let facebookSpend = 0;
+                    // Process current period metrics
+                    const currentMetrics = processMetricsForPeriod(
+                        data, conversions, config, periodStart, periodEnd, tabPrefix, clientName
+                    );
+
+                    // Process previous period metrics (same number of days)
+                    const prevPeriodDates = getPreviousPeriodDates(config.clientType, periodStart, periodEnd, daysElapsed);
+                    let previousPeriodData = null;
+                    
+                    if (prevPeriodDates.start && prevPeriodDates.end) {
+                        const prevMetrics = processMetricsForPeriod(
+                            data, conversions, config, prevPeriodDates.start, prevPeriodDates.end, tabPrefix, clientName
+                        );
+                        
+                        previousPeriodData = {
+                            conversions: prevMetrics.conversions,
+                            careConversions: prevMetrics.careConversions,
+                            nursingConversions: prevMetrics.nursingConversions,
+                            cpa: prevMetrics.cpa,
+                            ctr: prevMetrics.ctr
+                        };
+                    }
+
+                    // Get daily budgets (from latest data)
                     let googleDailyBudget = 0;
                     let facebookDailyBudget = 0;
-                    let totalCTR = 0;
-                    let ctrCount = 0;
-                    let careConversions = 0;
-                    let nursingConversions = 0;
 
-                    // Process Google data
+                    // Process Google daily budget
                     const googleTabName = `${tabPrefix} Google`;
                     if (data[googleTabName]) {
                         let latestDate = null;
@@ -1060,21 +1286,12 @@
                         
                         data[googleTabName].forEach(row => {
                             const campaign = row.Campaign || '';
-                            const cost = parseFloat(row.Cost) || 0;
                             const dailyBudget = parseFloat(row.DailyBudget) || 0;
-                            const ctr = row.CTR ? parseFloat(row.CTR.replace('%', '')) : 0;
 
                             const matchesCampaign = config.campaigns.includes('*') || 
                                                  config.campaigns.some(c => campaign === c);
 
                             if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
-                                googleSpend += cost;
-                                
-                                if (ctr > 0) {
-                                    totalCTR += ctr;
-                                    ctrCount++;
-                                }
-
                                 const rowDate = new Date(row.Date);
                                 if (!latestDate || rowDate > latestDate) {
                                     latestDate = rowDate;
@@ -1094,23 +1311,7 @@
                         googleDailyBudget = latestDateBudget;
                     }
 
-                    // Process Google Conversions for HC-One clients
-                    if (clientName.includes('HC-One') && conversions['HC1 Google Conversions']) {
-                        conversions['HC1 Google Conversions'].forEach(row => {
-                            const campaign = row.Campaign || '';
-                            const matchesCampaign = config.campaigns.some(c => campaign === c);
-                            
-                            if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
-                                const nursingValue = parseFloat(row['HC1 Jobs (web) completed_application_Nursing']) || 0;
-                                const careValue = parseFloat(row['HC1 Jobs (web) completed_application_Care']) || 0;
-                                
-                                nursingConversions += nursingValue;
-                                careConversions += careValue;
-                            }
-                        });
-                    }
-
-                    // Process Facebook data
+                    // Process Facebook daily budget
                     const facebookTabName = `${tabPrefix} FB`;
                     if (data[facebookTabName]) {
                         let latestDate = null;
@@ -1118,11 +1319,7 @@
                         
                         data[facebookTabName].forEach(row => {
                             const campaign = row.Campaign || '';
-                            const cost = parseFloat(row.Cost) || 0;
                             const rawBudget = row.DailyBudget || 0;
-                            const ctr = row.CTR ? parseFloat(row.CTR.replace('%', '')) : 0;
-                            const fbCareApps = parseFloat(row.CareApplications) || 0;
-                            const fbNursingApps = parseFloat(row.NursingApplications) || 0;
                             
                             let dailyBudget = 0;
                             if (rawBudget) {
@@ -1137,17 +1334,6 @@
                                                  config.campaigns.some(c => campaign === c);
 
                             if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
-                                facebookSpend += cost;
-                                
-                                if (ctr > 0) {
-                                    totalCTR += ctr;
-                                    ctrCount++;
-                                }
-                                
-                                // Add Facebook conversions
-                                careConversions += fbCareApps;
-                                nursingConversions += fbNursingApps;
-
                                 const rowDate = new Date(row.Date);
                                 if (!latestDate || rowDate > latestDate) {
                                     latestDate = rowDate;
@@ -1164,13 +1350,12 @@
                         facebookDailyBudget = Array.from(latestDateBudgets.values()).reduce((sum, budget) => sum + budget, 0);
                     }
 
-                    const total = googleSpend + facebookSpend;
+                    const total = currentMetrics.total;
                     const used = (total / config.budget) * 100;
                     const remaining = config.budget - total;
                     const currentDailyBudget = googleDailyBudget + facebookDailyBudget;
                     const projectedSpend = total + (currentDailyBudget * daysLeft);
                     const projectedOverBudget = ((projectedSpend / config.budget) - 1) * 100;
-                    const avgCTR = ctrCount > 0 ? (totalCTR / ctrCount).toFixed(2) : '0.00';
 
                     let status = 'ON TRACK';
                     if (total >= config.budget) {
@@ -1183,13 +1368,14 @@
 
                     processedClients.push({
                         name: clientName,
-                        google: googleSpend,
-                        facebook: facebookSpend,
+                        google: currentMetrics.googleSpend,
+                        facebook: currentMetrics.facebookSpend,
                         total: total,
                         budget: config.budget,
                         period: config.period,
                         totalDays: config.totalDays,
                         daysLeft: daysLeft,
+                        daysElapsed: daysElapsed,
                         used: used,
                         remaining: remaining,
                         status: status,
@@ -1198,16 +1384,24 @@
                         facebookDailyBudget: facebookDailyBudget,
                         projectedSpend: projectedSpend,
                         projectedOverBudget: projectedOverBudget,
-                        ctr: avgCTR,
-                        careConversions: careConversions,
-                        nursingConversions: nursingConversions,
-                        conversions: careConversions + nursingConversions, // Total conversions
+                        ctr: currentMetrics.ctr.toFixed(2),
+                        careConversions: currentMetrics.careConversions,
+                        nursingConversions: currentMetrics.nursingConversions,
+                        conversions: currentMetrics.conversions,
+                        previousPeriod: previousPeriodData,
                         isHistorical: false
                     });
+                    
+                    // Log previous period comparison for debugging
+                    if (previousPeriodData && clientName === 'Apollo') {
+                        addLog(`🔍 ${clientName} Period Comparison:`, 'info');
+                        addLog(`   Current: ${currentMetrics.conversions} conversions, CTR: ${currentMetrics.ctr.toFixed(2)}%`, 'info');
+                        addLog(`   Previous: ${previousPeriodData.conversions} conversions, CTR: ${previousPeriodData.ctr.toFixed(2)}%`, 'info');
+                    }
                 });
 
                 return processedClients;
-            }, [clientConfig]);
+            }, [clientConfig, getPreviousPeriodDates]);
 
             useEffect(() => {
                 loadData();
@@ -1264,7 +1458,7 @@
                                 {loading && <p className="text-sm text-blue-600 mt-1">🔄 Loading data...</p>}
                                 {error && <p className="text-sm text-red-600 mt-1">❌ {error}</p>}
                                 {Object.keys(rawData).length > 0 && <p className="text-sm text-green-600 mt-1">✅ Processing {Object.keys(rawData).length} data tabs</p>}
-                                <p className="text-sm text-gray-600 mt-1">🔧 v2.20.0: Real conversion data integration with collapsible sections</p>
+                                <p className="text-sm text-gray-600 mt-1">🔧 v2.21.0: Period-over-period trend comparison with visual indicators</p>
                             </div>
 
                             {logs.length > 0 && (
