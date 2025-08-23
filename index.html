@@ -465,6 +465,11 @@
                         conversionValue = client.careConversions || 0;
                         conversionIcon = '🏥';
                     }
+                } else if (client.name === 'Apollo') {
+                    // Apollo shows total conversions (both care and nursing)
+                    conversionLabel = 'Applications';
+                    conversionValue = (client.careConversions || 0) + (client.nursingConversions || 0);
+                    conversionIcon = '📋';
                 } else {
                     // For other clients, use generic conversions if available
                     conversionValue = client.conversions || 0;
@@ -1046,7 +1051,7 @@
                             addLog(`Fetching data from tab: ${tabName}`, 'info');
                             
                             // Adjust range to include CTR and conversion columns
-                            const range = tabName.includes('FB') ? `${tabName}!A:G` : `${tabName}!A:F`;
+                            const range = tabName.includes('FB') ? `${tabName}!A:H` : `${tabName}!A:F`;
                             const url = `${PROXY_URL}?spreadsheetId=${SPREADSHEET_ID}&range=${encodeURIComponent(range)}&apiKey=${API_KEY}`;
                             
                             const response = await fetch(url);
@@ -1072,11 +1077,11 @@
                                                     rowData['AdsetName'] = row[index] || '';
                                                 } else if (header === 'Adset daily budget') {
                                                     rowData['DailyBudget'] = row[index] || '';
-                                                } else if (headerLower.includes('ctr')) {
+                                                } else if (header === 'Unique inline link click CTR' || headerLower.includes('ctr')) {
                                                     rowData['CTR'] = row[index] || '';
-                                                } else if (headerLower.includes('care') && headerLower.includes('app')) {
+                                                } else if (header === 'Event conversion Care Application' || (headerLower.includes('care') && headerLower.includes('app'))) {
                                                     rowData['CareApplications'] = row[index] || '';
-                                                } else if (headerLower.includes('nurs') && headerLower.includes('app')) {
+                                                } else if (header === 'Event conversion Nurse Application' || (headerLower.includes('nurs') && headerLower.includes('app'))) {
                                                     rowData['NursingApplications'] = row[index] || '';
                                                 } else {
                                                     rowData[header] = row[index] || '';
@@ -1134,6 +1139,37 @@
                         addLog(`⚠️ Could not load HC1 Google Conversions: ${convError.message}`, 'warning');
                     }
 
+                    // Load Apollo Google Conversions tab
+                    try {
+                        addLog('Fetching Apollo Google Conversions data...', 'info');
+                        const apolloConversionRange = 'Apollo Google Conversions!A:D';
+                        const url = `${PROXY_URL}?spreadsheetId=${SPREADSHEET_ID}&range=${encodeURIComponent(apolloConversionRange)}&apiKey=${API_KEY}`;
+                        
+                        const response = await fetch(url);
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            
+                            if (data.values && data.values.length > 1) {
+                                const headers = data.values[0];
+                                const rows = data.values.slice(1);
+                                
+                                const conversionData = rows.map(row => {
+                                    const rowData = {};
+                                    headers.forEach((header, index) => {
+                                        rowData[header] = row[index] || '';
+                                    });
+                                    return rowData;
+                                });
+                                
+                                conversions['Apollo Google Conversions'] = conversionData;
+                                addLog(`✅ Loaded ${conversionData.length} rows from Apollo Google Conversions`, 'success');
+                            }
+                        }
+                    } catch (convError) {
+                        addLog(`⚠️ Could not load Apollo Google Conversions: ${convError.message}`, 'warning');
+                    }
+
                     setRawData(allData);
                     setConversionData(conversions);
                     addLog(`🎉 Data loading complete! Loaded ${Object.keys(allData).length} tabs`, 'success');
@@ -1188,6 +1224,22 @@
                             
                             nursingConversions += nursingValue;
                             careConversions += careValue;
+                        }
+                    });
+                }
+
+                // Process Google Conversions for Apollo
+                if (clientName === 'Apollo' && conversions['Apollo Google Conversions']) {
+                    conversions['Apollo Google Conversions'].forEach(row => {
+                        const campaign = row.Campaign || '';
+                        const matchesCampaign = config.campaigns.some(c => campaign === c);
+                        
+                        if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
+                            const careValue = parseFloat(row['Apollo Home Healthcare - GA4 (web) care_application']) || 0;
+                            const nursingValue = parseFloat(row['Apollo Home Healthcare - GA4 (web) nurse_application']) || 0;
+                            
+                            careConversions += careValue;
+                            nursingConversions += nursingValue;
                         }
                     });
                 }
@@ -1391,13 +1443,6 @@
                         previousPeriod: previousPeriodData,
                         isHistorical: false
                     });
-                    
-                    // Log previous period comparison for debugging
-                    if (previousPeriodData && clientName === 'Apollo') {
-                        addLog(`🔍 ${clientName} Period Comparison:`, 'info');
-                        addLog(`   Current: ${currentMetrics.conversions} conversions, CTR: ${currentMetrics.ctr.toFixed(2)}%`, 'info');
-                        addLog(`   Previous: ${previousPeriodData.conversions} conversions, CTR: ${previousPeriodData.ctr.toFixed(2)}%`, 'info');
-                    }
                 });
 
                 return processedClients;
