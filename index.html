@@ -761,6 +761,7 @@
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
             const [logs, setLogs] = useState([]);
+            const [showLogs, setShowLogs] = useState(false); // Hidden by default
 
             // Configuration
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
@@ -1492,25 +1493,32 @@
                                     {loading ? 'Loading...' : '🔄 Refresh Data'}
                                 </button>
                                 <button
-                                    onClick={clearLogs}
-                                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                                    onClick={() => setShowLogs(!showLogs)}
+                                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
                                 >
-                                    Clear Logs
+                                    {showLogs ? '🙈 Hide Logs' : '👁️ Show Logs'}
                                 </button>
+                                {showLogs && (
+                                    <button
+                                        onClick={clearLogs}
+                                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                                    >
+                                        Clear Logs
+                                    </button>
+                                )}
                             </div>
                             
                             <div className="mt-4">
                                 {loading && <p className="text-sm text-blue-600 mt-1">🔄 Loading data...</p>}
                                 {error && <p className="text-sm text-red-600 mt-1">❌ {error}</p>}
                                 {Object.keys(rawData).length > 0 && <p className="text-sm text-green-600 mt-1">✅ Processing {Object.keys(rawData).length} data tabs</p>}
-                                <p className="text-sm text-gray-600 mt-1">🔧 v2.21.0: Period-over-period trend comparison with visual indicators</p>
                             </div>
 
-                            {logs.length > 0 && (
-                                <div className="mt-4">
+                            {showLogs && logs.length > 0 && (
+                                <div className="mt-4 animate-in slide-in-from-top duration-300">
                                     <h4 className="text-sm font-medium text-gray-800 mb-2">System Logs:</h4>
-                                    <div className="bg-gray-900 text-green-400 p-3 rounded max-h-32 overflow-y-auto font-mono text-xs">
-                                        {logs.slice(-20).map((log, index) => (
+                                    <div className="bg-gray-900 text-green-400 p-3 rounded max-h-48 overflow-y-auto font-mono text-xs">
+                                        {logs.slice(-30).map((log, index) => (
                                             <div
                                                 key={index}
                                                 className={
