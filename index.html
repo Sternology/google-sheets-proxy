@@ -561,6 +561,14 @@
                     conversionLabel = 'Applications';
                     conversionValue = (client.careConversions || 0) + (client.nursingConversions || 0);
                     conversionIcon = '📋';
+                } else if (client.name === 'Cygnet Nursing') {
+                    conversionLabel = 'Nurse Apps';
+                    conversionValue = client.nursingConversions || 0;
+                    conversionIcon = '👩‍⚕️';
+                } else if (client.name === 'Cygnet Care') {
+                    conversionLabel = 'Care Apps';
+                    conversionValue = client.careConversions || 0;
+                    conversionIcon = '🏥';
                 } else {
                     // For other clients, use generic conversions if available
                     conversionValue = client.conversions || 0;
@@ -872,7 +880,7 @@
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.22.0'; // Added historical month viewing
+            const VERSION = 'v2.23.0'; // Complete Cygnet conversion tracking
 
             // Generate available months for the current year
             const getAvailableMonths = useCallback(() => {
@@ -1262,24 +1270,26 @@
                                             const headerLower = header.toLowerCase();
                                             
                                             if (tabName.includes('FB')) {
+                                                // Updated Facebook header matching for Cygnet
                                                 if (header === 'Campaign name') {
                                                     rowData['Campaign'] = row[index] || '';
-                                                } else if (header === 'Amount spent (GBP)') {
+                                                } else if (header === 'Amount spent' || header === 'Amount spent (GBP)') {
                                                     rowData['Cost'] = row[index] || '';
                                                 } else if (header === 'Adset name') {
                                                     rowData['AdsetName'] = row[index] || '';
                                                 } else if (header === 'Adset daily budget') {
                                                     rowData['DailyBudget'] = row[index] || '';
-                                                } else if (header === 'Unique inline link click CTR' || headerLower.includes('ctr')) {
+                                                } else if (header === 'CTR (Link click-through rate)' || header === 'Unique inline link click CTR' || headerLower.includes('ctr')) {
                                                     rowData['CTR'] = row[index] || '';
-                                                } else if (header === 'Event conversion Care Application' || (headerLower.includes('care') && headerLower.includes('app'))) {
+                                                } else if (header === 'Event conversion Care Custom Conversion' || header === 'Event conversion Care Application' || (headerLower.includes('care') && (headerLower.includes('conv') || headerLower.includes('app')))) {
                                                     rowData['CareApplications'] = row[index] || '';
-                                                } else if (header === 'Event conversion Nurse Application' || (headerLower.includes('nurs') && headerLower.includes('app'))) {
+                                                } else if (header === 'Event conversion Nurse Custom Conversion' || header === 'Event conversion Nurse Application' || (headerLower.includes('nurs') && (headerLower.includes('conv') || headerLower.includes('app')))) {
                                                     rowData['NursingApplications'] = row[index] || '';
                                                 } else {
                                                     rowData[header] = row[index] || '';
                                                 }
                                             } else {
+                                                // Google header matching
                                                 if (header === 'Budget Amount') {
                                                     rowData['DailyBudget'] = row[index] || '';
                                                 } else if (headerLower.includes('ctr')) {
@@ -1363,6 +1373,37 @@
                         addLog(`⚠️ Could not load Apollo Google Conversions: ${convError.message}`, 'warning');
                     }
 
+                    // Load Cygnet Google Conversions tab - NEW!
+                    try {
+                        addLog('Fetching Cygnet Google Conversions data...', 'info');
+                        const cygnetConversionRange = 'Cygnet Google Conversions!A:D';
+                        const url = `${PROXY_URL}?spreadsheetId=${SPREADSHEET_ID}&range=${encodeURIComponent(cygnetConversionRange)}&apiKey=${API_KEY}`;
+                        
+                        const response = await fetch(url);
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            
+                            if (data.values && data.values.length > 1) {
+                                const headers = data.values[0];
+                                const rows = data.values.slice(1);
+                                
+                                const conversionData = rows.map(row => {
+                                    const rowData = {};
+                                    headers.forEach((header, index) => {
+                                        rowData[header] = row[index] || '';
+                                    });
+                                    return rowData;
+                                });
+                                
+                                conversions['Cygnet Google Conversions'] = conversionData;
+                                addLog(`✅ Loaded ${conversionData.length} rows from Cygnet Google Conversions`, 'success');
+                            }
+                        }
+                    } catch (convError) {
+                        addLog(`⚠️ Could not load Cygnet Google Conversions: ${convError.message}`, 'warning');
+                    }
+
                     setRawData(allData);
                     setConversionData(conversions);
                     addLog(`🎉 Data loading complete! Loaded ${Object.keys(allData).length} tabs`, 'success');
@@ -1437,6 +1478,24 @@
                     });
                 }
 
+                // Process Google Conversions for Cygnet - NEW!
+                if (clientName.includes('Cygnet') && conversions['Cygnet Google Conversions']) {
+                    conversions['Cygnet Google Conversions'].forEach(row => {
+                        const campaign = row.Campaign || '';
+                        const matchesCampaign = config.campaigns.some(c => campaign === c);
+                        
+                        if (matchesCampaign && isDateInRange(row.Date, periodStart, periodEnd)) {
+                            if (clientName === 'Cygnet Nursing') {
+                                const nursingValue = parseFloat(row['Submit Nurse Application']) || 0;
+                                nursingConversions += nursingValue;
+                            } else if (clientName === 'Cygnet Care') {
+                                const careValue = parseFloat(row['Submit Care & Support Application']) || 0;
+                                careConversions += careValue;
+                            }
+                        }
+                    });
+                }
+
                 // Process Facebook data
                 const facebookTabName = `${tabPrefix} FB`;
                 if (data[facebookTabName]) {
@@ -1458,9 +1517,16 @@
                                 ctrCount++;
                             }
                             
-                            // Add Facebook conversions
-                            careConversions += fbCareApps;
-                            nursingConversions += fbNursingApps;
+                            // Add Facebook conversions - now works for Cygnet too!
+                            if (clientName === 'Cygnet Nursing') {
+                                nursingConversions += fbNursingApps;
+                            } else if (clientName === 'Cygnet Care') {
+                                careConversions += fbCareApps;
+                            } else {
+                                // For other clients, add both types
+                                careConversions += fbCareApps;
+                                nursingConversions += fbNursingApps;
+                            }
                         }
                     });
                 }
