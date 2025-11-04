@@ -40,7 +40,6 @@
             text-align: center;
         }
         
-        /* Collapsible section animations */
         .collapsible-content {
             overflow: hidden;
             transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
@@ -54,7 +53,6 @@
             opacity: 1;
         }
         
-        /* Chevron rotation animation */
         .chevron {
             transition: transform 0.3s ease;
         }
@@ -62,7 +60,6 @@
             transform: rotate(180deg);
         }
         
-        /* KPI Scorecard styles */
         .kpi-badge {
             position: relative;
             overflow: hidden;
@@ -78,7 +75,6 @@
             opacity: 0.3;
         }
         
-        /* Trend indicator animations */
         @keyframes pulseGreen {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.7; }
@@ -110,7 +106,6 @@
             transform: translateY(1px);
         }
         
-        /* Improved trend background */
         .kpi-badge.trend-up {
             background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(16, 185, 129, 0.1) 100%);
         }
@@ -119,7 +114,6 @@
             background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(239, 68, 68, 0.1) 100%);
         }
         
-        /* Historical view styles */
         .historical-badge {
             background: linear-gradient(135deg, rgba(156, 163, 175, 0.1) 0%, rgba(156, 163, 175, 0.2) 100%);
             border: 2px solid rgba(156, 163, 175, 0.3);
@@ -142,7 +136,6 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useCallback } = React;
         
-        // Month Selector Component
         const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => {
             return (
                 <div className="flex items-center gap-3">
@@ -167,7 +160,6 @@
             );
         };
         
-        // KPI Scorecard Component with Enhanced Trend Display
         const KPIScorecard = ({ label, value, unit, trend, performance, icon, invertTrend = false, previousValue = null }) => {
             const getPerformanceColor = () => {
                 switch(performance) {
@@ -179,7 +171,6 @@
                 }
             };
 
-            // For CPA, lower is better, so invert the colors
             const getTrendColor = () => {
                 if (trend === null || trend === undefined || trend === 0) return 'text-gray-400';
                 
@@ -232,7 +223,6 @@
             );
         };
         
-        // Custom SVG Gauge Component
         const GaugeChart = ({ value, maxValue, color, label, displayValue }) => {
             const radius = 45;
             const circumference = 2 * Math.PI * radius;
@@ -275,9 +265,7 @@
             );
         };
 
-        // Budget Adjustment Recommendation Component
         const BudgetAdjustmentCard = ({ client }) => {
-            // Hide adjustment card for historical views
             if (client.isHistorical) {
                 const hitTarget = client.used <= 105 && client.used >= 95;
                 const underBudget = client.used < 95;
@@ -315,7 +303,6 @@
                 );
             }
             
-            // Original adjustment card logic for current period
             const calculateTargetDailyBudget = () => {
                 if (client.daysLeft <= 0) return { recommended: 0, change: 0, message: "Period ended" };
                 
@@ -524,11 +511,9 @@
             );
         };
 
-        // Client Card Component with Collapsible Section
         const ClientCard = ({ client }) => {
             const [isExpanded, setIsExpanded] = useState(false);
             
-            // Determine card style based on historical vs current
             const getCardStyle = () => {
                 if (client.isHistorical) {
                     const hitTarget = client.used <= 105 && client.used >= 95;
@@ -539,9 +524,7 @@
                 return 'bg-green-50 border-green-300';
             };
             
-            // Get KPI data from client object with trend comparisons
             const getKPIData = () => {
-                // Determine primary conversion metric based on client type
                 let conversionLabel = 'Conversions';
                 let conversionValue = 0;
                 let conversionIcon = '🎯';
@@ -551,13 +534,12 @@
                         conversionLabel = 'Nurse Apps';
                         conversionValue = client.nursingConversions || 0;
                         conversionIcon = '👩‍⚕️';
-                    } else if (client.name.includes('Scotland') || client.name.includes('England/Wales')) {
+                    } else if (client.name.includes('England/Wales')) {
                         conversionLabel = 'Care Apps';
                         conversionValue = client.careConversions || 0;
                         conversionIcon = '🏥';
                     }
                 } else if (client.name === 'Apollo') {
-                    // Apollo shows total conversions (both care and nursing)
                     conversionLabel = 'Applications';
                     conversionValue = (client.careConversions || 0) + (client.nursingConversions || 0);
                     conversionIcon = '📋';
@@ -570,24 +552,18 @@
                     conversionValue = client.careConversions || 0;
                     conversionIcon = '🏥';
                 } else {
-                    // For other clients, use generic conversions if available
                     conversionValue = client.conversions || 0;
                 }
                 
-                // Calculate CPA (Cost Per Application/Conversion)
                 const cpa = conversionValue > 0 ? (client.total / conversionValue).toFixed(2) : 'N/A';
-                
-                // Get CTR from data or use default
                 const ctr = client.ctr || '0.00';
                 
-                // Calculate trends from previous period data
                 const prevConversions = client.previousPeriod?.conversions || 
                                       client.previousPeriod?.nursingConversions || 
                                       client.previousPeriod?.careConversions || 0;
                 const prevCPA = client.previousPeriod?.cpa || null;
                 const prevCTR = client.previousPeriod?.ctr || null;
                 
-                // Calculate percentage changes
                 const conversionTrend = prevConversions > 0 ? 
                     ((conversionValue - prevConversions) / prevConversions * 100) : null;
                 
@@ -597,12 +573,10 @@
                 const ctrTrend = prevCTR ? 
                     ((parseFloat(ctr) - prevCTR) / prevCTR * 100) : null;
                 
-                // Format previous values for display
                 const prevConversionDisplay = prevConversions > 0 ? prevConversions.toString() : null;
                 const prevCPADisplay = prevCPA ? `£${prevCPA.toFixed(2)}` : null;
                 const prevCTRDisplay = prevCTR ? `${prevCTR.toFixed(2)}%` : null;
                 
-                // Determine performance levels
                 const getConversionPerformance = () => {
                     if (conversionValue === 0) return 'poor';
                     if (conversionValue > 50) return 'excellent';
@@ -646,7 +620,7 @@
                         previousValue: client.isHistorical ? null : prevCPADisplay,
                         performance: getCPAPerformance(),
                         icon: '💰',
-                        invertTrend: true // Lower is better for CPA
+                        invertTrend: true
                     },
                     ctr: {
                         label: 'Click-Through Rate',
@@ -685,7 +659,6 @@
                         </span>
                     </div>
                     
-                    {/* Gauge Charts - Hide pace and projected for historical */}
                     <div className={`grid grid-cols-1 ${client.isHistorical ? '' : 'md:grid-cols-3'} gap-4 mb-4`}>
                         <GaugeChart
                             value={client.used}
@@ -739,7 +712,6 @@
                         )}
                     </div>
 
-                    {/* KPI Scorecards with Trends */}
                     <div className="grid grid-cols-3 gap-3 mb-4">
                         <KPIScorecard
                             label={kpiData.conversions.label}
@@ -773,7 +745,6 @@
 
                     <BudgetAdjustmentCard client={client} />
 
-                    {/* Collapsible Budget Details Section */}
                     <div className="mt-4 border-t pt-4">
                         <button
                             onClick={() => setIsExpanded(!isExpanded)}
@@ -873,16 +844,14 @@
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
             const [logs, setLogs] = useState([]);
-            const [showLogs, setShowLogs] = useState(false); // Hidden by default
+            const [showLogs, setShowLogs] = useState(false);
             const [selectedMonth, setSelectedMonth] = useState('current');
 
-            // Configuration
             const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-            const VERSION = 'v2.23.0'; // Complete Cygnet conversion tracking
+            const VERSION = 'v2.24.0'; // HC-One Scotland removed
 
-            // Generate available months for the current year
             const getAvailableMonths = useCallback(() => {
                 const currentDate = new Date();
                 const currentYear = currentDate.getFullYear();
@@ -895,7 +864,6 @@
                 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
                                  'July', 'August', 'September', 'October', 'November', 'December'];
                 
-                // Add months from January to current month
                 for (let i = 0; i <= currentMonth; i++) {
                     months.push({
                         value: `${currentYear}-${String(i + 1).padStart(2, '0')}`,
@@ -909,25 +877,18 @@
 
             const availableMonths = useMemo(() => getAvailableMonths(), [getAvailableMonths]);
 
-            // Get period for historical months
             const getHistoricalPeriod = useCallback((year, month, clientType) => {
                 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 
                 if (clientType === 'apollo') {
-                    // Apollo runs 26th to 25th
                     const startMonth = month - 1 < 0 ? 11 : month - 1;
                     const endMonth = month;
                     return `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
                 } else if (clientType === 'hc1') {
-                    // HC-One runs 11th to 10th
                     const startMonth = month - 1 < 0 ? 11 : month - 1;
                     const endMonth = month;
                     return `${monthNames[startMonth]} 11 - ${monthNames[endMonth]} 10`;
-                } else if (clientType === 'hc1-scotland') {
-                    // Special 3-month campaign
-                    return 'Jun 26 - Sep 25';
                 } else {
-                    // Standard calendar month
                     const lastDay = new Date(year, month + 1, 0).getDate();
                     return `${monthNames[month]} 1 - ${monthNames[month]} ${lastDay}`;
                 }
@@ -964,8 +925,6 @@
                     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                     const periodString = `${monthNames[startMonth]} 26 - ${monthNames[endMonth]} 25`;
                     return periodString;
-                } else if (clientType === 'hc1-scotland') {
-                    return 'Jun 26 - Sep 25';
                 } else if (clientType === 'hc1') {
                     const currentMonth = today.getMonth();
                     const day = today.getDate();
@@ -997,34 +956,22 @@
             }, []);
 
             const getPreviousPeriodDates = useCallback((clientType, currentPeriodStart, currentPeriodEnd, daysElapsed) => {
-                // Calculate the previous period dates based on client type
-                // We want the same number of days elapsed in the previous period
-                
-                if (clientType === 'hc1-scotland') {
-                    // Special case: HC-One Scotland doesn't have a previous period (it's a fixed campaign)
-                    return { start: null, end: null };
-                }
-                
                 const prevPeriodEnd = new Date(currentPeriodStart);
-                prevPeriodEnd.setDate(prevPeriodEnd.getDate() - 1); // Day before current period start
+                prevPeriodEnd.setDate(prevPeriodEnd.getDate() - 1);
                 
                 const prevPeriodStart = new Date(prevPeriodEnd);
                 
                 if (clientType === 'apollo') {
-                    // 26th to 25th cycle
                     prevPeriodStart.setMonth(prevPeriodStart.getMonth() - 1);
                     prevPeriodStart.setDate(26);
                 } else if (clientType === 'hc1') {
-                    // 11th to 10th cycle
                     prevPeriodStart.setMonth(prevPeriodStart.getMonth() - 1);
                     prevPeriodStart.setDate(11);
                 } else {
-                    // Calendar month
                     prevPeriodStart.setMonth(prevPeriodStart.getMonth() - 1);
                     prevPeriodStart.setDate(1);
                 }
                 
-                // Adjust end date to match the number of days elapsed
                 const adjustedPrevEnd = new Date(prevPeriodStart);
                 adjustedPrevEnd.setDate(adjustedPrevEnd.getDate() + daysElapsed - 1);
                 
@@ -1034,8 +981,6 @@
             const getTotalDays = useCallback((clientType, selectedMonth = null) => {
                 if (clientType === 'apollo' || clientType === 'hc1') {
                     return 30;
-                } else if (clientType === 'hc1-scotland') {
-                    return 92;
                 } else {
                     if (selectedMonth && selectedMonth !== 'current') {
                         const [year, month] = selectedMonth.split('-').map(Number);
@@ -1052,7 +997,7 @@
                 
                 if (isHistorical) {
                     [year, month] = selectedMonth.split('-').map(Number);
-                    month = month - 1; // JavaScript months are 0-indexed
+                    month = month - 1;
                 }
                 
                 return {
@@ -1095,20 +1040,6 @@
                         totalDays: getTotalDays('hc1', selectedMonth),
                         clientType: 'hc1',
                         tabPrefix: 'HC1'
-                    },
-                    'HC-One - Scotland': {
-                        campaigns: [
-                            'AL - Scotland Always on Care Search Campaign',
-                            'AL - Scotland Always on Care Search Campaign AI MAX',
-                            'Always on Care – Scotland'
-                        ],
-                        budget: 3000,
-                        period: isHistorical ? getHistoricalPeriod(year, month, 'hc1-scotland') : getCurrentPeriod('hc1-scotland'),
-                        totalDays: getTotalDays('hc1-scotland', selectedMonth),
-                        clientType: 'hc1-scotland',
-                        tabPrefix: 'HC1',
-                        skipTabs: true,
-                        note: '3-month campaign: Jun 26 - Sep 25'
                     },
                     'HC-One - Nursing': {
                         campaigns: [
@@ -1161,30 +1092,22 @@
                 let endYear = currentYear;
                 
                 if (isHistorical) {
-                    // For historical periods, use the provided year/month
                     if (startDay === 26 && endDay === 25) {
-                        // Apollo cycle
                         if (endMonthIndex === month) {
                             endYear = year;
                             startYear = startMonthIndex > endMonthIndex ? year - 1 : year;
                         }
                     } else if (startDay === 11 && endDay === 10) {
-                        // HC-One cycle
                         if (endMonthIndex === month) {
                             endYear = year;
                             startYear = startMonthIndex > endMonthIndex ? year - 1 : year;
                         }
                     } else if (startMonthIndex === endMonthIndex) {
-                        // Standard calendar month
                         startYear = year;
                         endYear = year;
                     }
                 } else {
-                    // Current period logic (existing code)
-                    if (startMonthIndex === 5 && startDay === 26 && endMonthIndex === 8 && endDay === 25) {
-                        startYear = 2025;
-                        endYear = 2025;
-                    } else if (startDay === 26 && endDay === 25) {
+                    if (startDay === 26 && endDay === 25) {
                         if (currentDay >= 26) {
                             if (startMonthIndex === currentMonth) {
                                 startYear = currentYear;
@@ -1244,14 +1167,12 @@
                     const allData = {};
                     const conversions = {};
                     
-                    // Load standard tabs
                     const expectedTabs = ['Apollo Google', 'Apollo FB', 'Cygnet Google', 'Cygnet FB', 'HC1 Google', 'HC1 FB'];
 
                     for (const tabName of expectedTabs) {
                         try {
                             addLog(`Fetching data from tab: ${tabName}`, 'info');
                             
-                            // Adjust range to include CTR and conversion columns
                             const range = tabName.includes('FB') ? `${tabName}!A:H` : `${tabName}!A:F`;
                             const url = `${PROXY_URL}?spreadsheetId=${SPREADSHEET_ID}&range=${encodeURIComponent(range)}&apiKey=${API_KEY}`;
                             
@@ -1270,7 +1191,6 @@
                                             const headerLower = header.toLowerCase();
                                             
                                             if (tabName.includes('FB')) {
-                                                // Updated Facebook header matching for Cygnet
                                                 if (header === 'Campaign name') {
                                                     rowData['Campaign'] = row[index] || '';
                                                 } else if (header === 'Amount spent' || header === 'Amount spent (GBP)') {
@@ -1289,7 +1209,6 @@
                                                     rowData[header] = row[index] || '';
                                                 }
                                             } else {
-                                                // Google header matching
                                                 if (header === 'Budget Amount') {
                                                     rowData['DailyBudget'] = row[index] || '';
                                                 } else if (headerLower.includes('ctr')) {
@@ -1311,7 +1230,6 @@
                         }
                     }
 
-                    // Load HC1 Google Conversions tab
                     try {
                         addLog('Fetching HC1 Google Conversions data...', 'info');
                         const conversionRange = 'HC1 Google Conversions!A:D';
@@ -1342,7 +1260,6 @@
                         addLog(`⚠️ Could not load HC1 Google Conversions: ${convError.message}`, 'warning');
                     }
 
-                    // Load Apollo Google Conversions tab
                     try {
                         addLog('Fetching Apollo Google Conversions data...', 'info');
                         const apolloConversionRange = 'Apollo Google Conversions!A:D';
@@ -1373,7 +1290,6 @@
                         addLog(`⚠️ Could not load Apollo Google Conversions: ${convError.message}`, 'warning');
                     }
 
-                    // Load Cygnet Google Conversions tab - NEW!
                     try {
                         addLog('Fetching Cygnet Google Conversions data...', 'info');
                         const cygnetConversionRange = 'Cygnet Google Conversions!A:D';
@@ -1424,7 +1340,6 @@
                 let careConversions = 0;
                 let nursingConversions = 0;
 
-                // Process Google data
                 const googleTabName = `${tabPrefix} Google`;
                 if (data[googleTabName]) {
                     data[googleTabName].forEach(row => {
@@ -1446,7 +1361,6 @@
                     });
                 }
 
-                // Process Google Conversions for HC-One clients
                 if (clientName.includes('HC-One') && conversions['HC1 Google Conversions']) {
                     conversions['HC1 Google Conversions'].forEach(row => {
                         const campaign = row.Campaign || '';
@@ -1462,7 +1376,6 @@
                     });
                 }
 
-                // Process Google Conversions for Apollo
                 if (clientName === 'Apollo' && conversions['Apollo Google Conversions']) {
                     conversions['Apollo Google Conversions'].forEach(row => {
                         const campaign = row.Campaign || '';
@@ -1478,7 +1391,6 @@
                     });
                 }
 
-                // Process Google Conversions for Cygnet - NEW!
                 if (clientName.includes('Cygnet') && conversions['Cygnet Google Conversions']) {
                     conversions['Cygnet Google Conversions'].forEach(row => {
                         const campaign = row.Campaign || '';
@@ -1496,7 +1408,6 @@
                     });
                 }
 
-                // Process Facebook data
                 const facebookTabName = `${tabPrefix} FB`;
                 if (data[facebookTabName]) {
                     data[facebookTabName].forEach(row => {
@@ -1517,13 +1428,11 @@
                                 ctrCount++;
                             }
                             
-                            // Add Facebook conversions - now works for Cygnet too!
                             if (clientName === 'Cygnet Nursing') {
                                 nursingConversions += fbNursingApps;
                             } else if (clientName === 'Cygnet Care') {
                                 careConversions += fbCareApps;
                             } else {
-                                // For other clients, add both types
                                 careConversions += fbCareApps;
                                 nursingConversions += fbNursingApps;
                             }
@@ -1556,7 +1465,7 @@
                 
                 if (isHistorical) {
                     [historicalYear, historicalMonth] = selectedMonth.split('-').map(Number);
-                    historicalMonth = historicalMonth - 1; // JavaScript months are 0-indexed
+                    historicalMonth = historicalMonth - 1;
                 }
 
                 Object.keys(clientConfig).forEach(clientName => {
@@ -1578,12 +1487,10 @@
                         0 : 
                         Math.max(0, Math.ceil((periodEnd - today) / (1000 * 60 * 60 * 24)) + 1);
 
-                    // Process current/selected period metrics
                     const currentMetrics = processMetricsForPeriod(
                         data, conversions, config, periodStart, periodEnd, tabPrefix, clientName
                     );
 
-                    // Process previous period metrics (same number of days) - only for current period
                     let previousPeriodData = null;
                     
                     if (!isHistorical) {
@@ -1604,12 +1511,10 @@
                         }
                     }
 
-                    // Get daily budgets (from latest data) - only for current period
                     let googleDailyBudget = 0;
                     let facebookDailyBudget = 0;
 
                     if (!isHistorical) {
-                        // Process Google daily budget
                         const googleTabName = `${tabPrefix} Google`;
                         if (data[googleTabName]) {
                             let latestDate = null;
@@ -1642,7 +1547,6 @@
                             googleDailyBudget = latestDateBudget;
                         }
 
-                        // Process Facebook daily budget
                         const facebookTabName = `${tabPrefix} FB`;
                         if (data[facebookTabName]) {
                             let latestDate = null;
