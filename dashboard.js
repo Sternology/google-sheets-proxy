@@ -1,5 +1,3 @@
-// dashboard.js
-
 const { useState, useMemo, useEffect, useCallback } = React;
 
 // --- COMPONENTS ---
@@ -339,7 +337,7 @@ const ClientCard = ({ client }) => {
         } else if (client.name.includes('Cygnet Care')) {
             conversionLabel = 'Care Apps'; conversionValue = client.careConversions || 0; conversionIcon = '🏥';
         } else if (client.name === 'Brandon Trust') {
-            conversionLabel = 'Leads'; conversionValue = client.careConversions || 0; conversionIcon = '📝';
+            conversionLabel = 'Support Worker Apps'; conversionValue = client.careConversions || 0; conversionIcon = '📝';
         }
         
         const cpa = conversionValue > 0 ? (client.total / conversionValue).toFixed(2) : 'N/A';
@@ -498,7 +496,7 @@ const ClientBudgetTable = () => {
     const PROXY_URL = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
     const SPREADSHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
     const API_KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
-    const VERSION = 'v3.2.0 (Config + Brandon Trust)';
+    const VERSION = 'v3.2.1 (Brandon Trust - Support Worker)';
 
     const addLog = useCallback((message, type = 'info') => {
         const timestamp = new Date().toLocaleTimeString();
@@ -745,7 +743,8 @@ const ClientBudgetTable = () => {
                                         else if (header === 'Adset name') rowData['AdsetName'] = row[index] || '';
                                         else if (header === 'Adset daily budget') rowData['DailyBudget'] = row[index] || '';
                                         else if (headerLower.includes('ctr')) rowData['CTR'] = row[index] || '';
-                                        else if (headerLower.includes('care') && (headerLower.includes('conv') || headerLower.includes('app'))) rowData['CareApplications'] = row[index] || '';
+                                        // MODIFIED: Added check for "support" to capture Support Worker apps
+                                        else if ((headerLower.includes('care') || headerLower.includes('support')) && (headerLower.includes('conv') || headerLower.includes('app'))) rowData['CareApplications'] = row[index] || '';
                                         else if (headerLower.includes('nurs') && (headerLower.includes('conv') || headerLower.includes('app'))) rowData['NursingApplications'] = row[index] || '';
                                     } else {
                                         if (header === 'Budget Amount') rowData['DailyBudget'] = row[index] || '';
