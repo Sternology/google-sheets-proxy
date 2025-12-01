@@ -474,4 +474,143 @@ const ClientBudgetTable = () => {
         const today = new Date();
 
         return Object.values(configData).map(client => {
-            let total = 0, gSpend
+            let total = 0, gSpend = 0, fbSpend = 0, careApps = 0, nurseApps = 0, totalCTR = 0, ctrCount = 0;
+            let gDaily = 0, fbDaily = 0;
+
+            // Process Google
+            const gRows = rawData[`${client.tabPrefix} Google`] || [];
+            let lastGDate = null;
+            
+            gRows.forEach(row => {
+                const d = row.Date;
+                if (isDateInRange(d, client.start, client.end)) {
+                    // Spend
+                    const cost = parseFloat(row.Cost || 0);
+                    gSpend += cost;
+                    
+                    // CTR
+                    const ctr = parseFloat((row.CTR || '0').replace('%',''));
+                    if (ctr > 0) { totalCTR += ctr; ctrCount++; }
+
+                    // Capture Latest Daily Budget
+                    const rDate = parseSheetDate(d);
+                    const daily = parseFloat(row.DailyBudget || row['Budget Amount'] || 0);
+                    if (rDate && daily > 0) {
+                        if (!lastGDate || rDate >= lastGDate) {
+                             lastGDate = rDate;
+                             gDaily = Math.max(gDaily, daily); // Assume max of active campaigns on last day
+                        }
+                    }
+                }
+            });
+
+            // Process FB
+            const fbRows = rawData[`${client.tabPrefix} FB`] || [];
+            let lastFBDate = null;
+            let fbDailyMap = new Map();
+
+            fbRows.forEach(row => {
+                const d = row.Date;
+                if (isDateInRange(d, client.start, client.end)) {
+                    // Spend
+                    const cost = parseFloat(row['Amount spent (GBP)'] || row['Amount spent'] || row.Cost || 0);
+                    fbSpend += cost;
+
+                    // CTR
+                    const ctr = parseFloat((row['CTR (Link click-through rate)'] || row.CTR || '0').replace('%',''));
+                    if (ctr > 0) { totalCTR += ctr; ctrCount++; }
+
+                    // Conversions (Support Worker included here)
+                    const care = parseFloat(row['Event conversion Care Application'] || row.CareApplications || 0);
+                    const support = parseFloat(row['Event conversion Support Worker Application'] || 0);
+                    const nurse = parseFloat(row['Event conversion Nurse Application'] || row.NursingApplications || 0);
+                    
+                    careApps += (care + support);
+                    nurseApps += nurse;
+
+                    // Capture Latest Daily Budget (Sum of adsets)
+                    const rDate = parseSheetDate(d);
+                    const daily = parseFloat(row['Adset daily budget'] || row.DailyBudget || 0);
+                    if (rDate && daily > 0) {
+                        if (!lastFBDate || rDate > lastFBDate) {
+                            lastFBDate = rDate;
+                            fbDailyMap.clear();
+                            fbDailyMap.set(row['Adset name'], daily);
+                        } else if (rDate.getTime() === lastFBDate.getTime()) {
+                            fbDailyMap.set(row['Adset name'], daily);
+                        }
+                    }
+                }
+            });
+            
+            // Sum FB Daily Budgets
+            fbDailyMap.forEach(v => fbDaily += v);
+
+            // Process Google Conversions separately
+            const gConvRows = conversionData[`${client.tabPrefix} Google Conversions`] || [];
+            gConvRows.forEach(row => {
+                 if (isDateInRange(row.Date, client.start, client.end)) {
+                      // Heuristic to sum conversions
+                      Object.keys(row).forEach(k => {
+                          const val = parseFloat(row[k] || 0);
+                          if (val > 0) {
+                              if (k.toLowerCase().includes('nurse')) nurseApps += val;
+                              else careApps += val; 
+                          }
+                      });
+                 }
+            });
+
+            total = gSpend + fbSpend;
+            const daysTotal = Math.ceil((client.end - client.start) / 86400000);
+            const daysElapsed = Math.min(daysTotal, Math.ceil((today - client.start) / 86400000));
+            const daysLeft = Math.max(0, daysTotal - daysElapsed);
+
+            // Projection
+            const dailyAvg = daysElapsed > 0 ? total / daysElapsed : 0;
+            const projected = total + (dailyAvg * daysLeft);
+            
+            // Status
+            const usedPct = (total / client.budget) * 100;
+            const projPct = (projected / client.budget) * 100;
+            let status = 'ON TRACK';
+            if (projPct > 105) status = 'HOT';
+            else if (projPct < 95) status = 'COLD';
+            if (total >= client.budget) status = 'OVER BUDGET';
+
+            return {
+                ...client,
+                total,
+                used: usedPct,
+                status,
+                projectedSpend: projected,
+                daysLeft,
+                googleDailyBudget: gDaily,
+                facebookDailyBudget: fbDaily,
+                currentDailyBudget: gDaily + fbDaily,
+                careConversions: careApps,
+                nursingConversions: nurseApps,
+                conversions: careApps + nurseApps,
+                ctr: ctrCount > 0 ? (totalCTR / ctrCount).toFixed(2) : "0.00"
+            };
+        });
+    }, [configData, rawData, conversionData]);
+
+    return (
+        <div className="w-full min-h-screen bg-gray-50 p-6">
+            <div className="max-w-7xl mx-auto">
+                <div className="flex justify-between items-center mb-8">
+                    <h1 className="text-3xl font-bold text-gray-900">Client Budget Dashboard</h1>
+                    <MonthSelector selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} availableMonths={[{value:'current', label:'Current'}]} />
+                </div>
+                {loading && <div className="text-center text-blue-600 animate-pulse">Loading data...</div>}
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {processed.map(c => <ClientCard key={c.name} client={c} />)}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<ClientBudgetTable />);
