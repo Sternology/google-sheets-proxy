@@ -388,14 +388,15 @@
                                 const d = mapRow(h, r);
                                 if (!d.Date) return;
                                 
-                                const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign||d.Adset||'').toLowerCase().includes(c.trim().toLowerCase()));
+                                // FIX: Check Campaign OR Adset
+                                const rowText = (d.Campaign + ' ' + d.Adset).toLowerCase();
+                                const match = client.camps.includes('*') || client.camps.some(c => rowText.includes(c.trim().toLowerCase()));
                                 if (!match) return;
 
-                                // HC-One Regional Exclusion Logic
+                                // Exclusion Logic for Main HC1
                                 if (client.name.includes('England/Wales')) {
                                     const regions = ['Midlands', 'North East', 'North West', 'Scotland', 'South', 'Yorkshire', 'Humber'];
-                                    const rowName = (d.Campaign || d.Adset || '').toLowerCase();
-                                    if (regions.some(reg => rowName.includes(reg.toLowerCase()))) return; // SKIP Regional items
+                                    if (regions.some(reg => rowText.includes(reg.toLowerCase()))) return;
                                 }
 
                                 // CURRENT
