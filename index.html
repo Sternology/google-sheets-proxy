@@ -88,19 +88,13 @@
             let trendColor = "text-gray-500 bg-gray-100";
             let arrow = "→";
             
-            // Logic: High trend is usually good (Green), unless it's CPA where Low is good
             if (trend !== undefined && trend !== null && !isNaN(trend) && isFinite(trend)) {
                 const isPositive = trend > 0;
                 arrow = isPositive ? "↑" : "↓";
-                const isCPA = label.includes('CPA');
-                
-                if (isCPA) {
-                    // For Cost, trend > 0 (Increase) is Bad (Red)
-                    trendColor = isPositive ? "text-red-700 bg-red-100" : "text-emerald-700 bg-emerald-100";
-                } else {
-                    // For Conversions, trend > 0 (Increase) is Good (Green)
-                    trendColor = isPositive ? "text-emerald-700 bg-emerald-100" : "text-red-700 bg-red-100";
-                }
+                const isCPA = label.includes('CPA') || label.includes('Cost');
+                // For CPA, Up is Bad. For Conversions/CTR, Up is Good.
+                if (isCPA) trendColor = isPositive ? "text-red-700 bg-red-100" : "text-emerald-700 bg-emerald-100";
+                else trendColor = isPositive ? "text-emerald-700 bg-emerald-100" : "text-red-700 bg-red-100";
             }
             
             return (
@@ -224,7 +218,6 @@
             else if (client.name.includes('Brandon')) kpi = { lbl: 'Support Apps', val: client.supportConversions + client.careConversions, icon: '📝', prev: client.prev.supportConversions + client.prev.careConversions };
             else if (client.name.includes('Care') || client.name.includes('HC-One')) kpi = { lbl: 'Care Apps', val: client.careConversions, icon: '🏥', prev: client.prev.careConversions };
 
-            // Calculate Trends
             const calcTrend = (curr, prev) => prev > 0 ? ((curr - prev) / prev) * 100 : 0;
             const convTrend = calcTrend(kpi.val, kpi.prev);
             
@@ -311,11 +304,8 @@
             const SHEET = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
 
-            // New Date Logic to handle Current AND Previous Period
             const getDates = (type, sel) => {
                 const now = new Date();
-                
-                // Last 30 Days Logic
                 if (sel === 'last30') {
                     const end = now;
                     const start = new Date(); start.setDate(now.getDate() - 30);
@@ -331,19 +321,24 @@
                 }
                 const make = (d) => new Date(y, m, d);
                 const makePrev = (d) => new Date(y, m - 1, d);
-                const makePrev2 = (d) => new Date(y, m - 2, d); // Two months back
 
                 let cur = {};
-                // Determine Current Range
                 if (type === 'apollo') cur = (sel === 'current' && now.getDate() >= 26) ? { start: make(26), end: new Date(y, m+1, 25) } : { start: makePrev(26), end: make(25) };
                 else if (type === 'brandon') cur = (sel === 'current' && now.getDate() >= 21) ? { start: make(21), end: new Date(y, m+1, 20) } : { start: makePrev(21), end: make(20) };
                 else if (type === 'hc1') cur = (sel === 'current' && now.getDate() >= 11) ? { start: make(11), end: new Date(y, m+1, 10) } : { start: makePrev(11), end: make(10) };
                 else cur = { start: new Date(y, m, 1), end: new Date(y, m+1, 0) };
 
-                // Calculate Previous Range (Exactly 1 month shift)
+                // Calculate Pro-Rata Comparison Date
+                let prevEnd = new Date(cur.end); prevEnd.setMonth(prevEnd.getMonth() - 1);
                 const prevStart = new Date(cur.start); prevStart.setMonth(prevStart.getMonth() - 1);
-                const prevEnd = new Date(cur.end); prevEnd.setMonth(prevEnd.getMonth() - 1);
                 
+                // If viewing CURRENT partial period, limit Previous view to the same # of days passed
+                if (sel === 'current') {
+                    const msPassed = now - cur.start;
+                    // Comparison end = Previous Start + Time passed so far
+                    prevEnd = new Date(prevStart.getTime() + msPassed);
+                }
+
                 return { ...cur, prevStart, prevEnd };
             };
 
@@ -382,9 +377,7 @@
                         const dates = getDates(client.type, month);
                         const label = `${dates.start.toLocaleDateString('en-GB')} - ${dates.end.toLocaleDateString('en-GB')}`;
                         
-                        // Current Period Stats
                         let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
-                        // Previous Period Stats
                         let prev = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
                         
                         let gBudgets = new Map(), fBudgets = new Map();
@@ -398,33 +391,30 @@
                                 const d = mapRow(h, r);
                                 if (!d.Date) return;
                                 
-                                // Loose Campaign Matching
                                 const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign||d.Adset||'').toLowerCase().includes(c.trim().toLowerCase()));
-                                if (!match) return; // Skip non-matching rows early
+                                if (!match) return;
 
-                                // Current Period Accumulation
+                                // CURRENT
                                 if (d.Date >= dates.start && d.Date <= dates.end) {
-                                    if (isConv) {
-                                        stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps;
-                                    } else {
+                                    if (isConv) { stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; }
+                                    else {
                                         stats.total += d.Cost;
                                         if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
                                         stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
                                     }
                                 }
 
-                                // Previous Period Accumulation
+                                // PREVIOUS
                                 if (d.Date >= dates.prevStart && d.Date <= dates.prevEnd) {
-                                    if (isConv) {
-                                        prev.careApps += d.CareApps; prev.nurseApps += d.NurseApps;
-                                    } else {
+                                    if (isConv) { prev.careApps += d.CareApps; prev.nurseApps += d.NurseApps; }
+                                    else {
                                         prev.total += d.Cost;
                                         if (d.CTR > 0) { prev.ctrSum += d.CTR; prev.ctrCount++; }
                                         prev.careApps += d.CareApps; prev.nurseApps += d.NurseApps; prev.supportApps += d.SupportApps;
                                     }
                                 }
 
-                                // Budget Logic
+                                // BUDGET
                                 if (d.DailyBudget > 0 && !isConv) {
                                     const t = d.Date.getTime();
                                     if (tabName.includes('Google')) {
@@ -467,13 +457,10 @@
                             careConversions: stats.careApps, nursingConversions: stats.nurseApps, supportConversions: stats.supportApps,
                             ctr: stats.ctrCount > 0 ? (stats.ctrSum / stats.ctrCount).toFixed(2) : 0,
                             isHistorical: month !== 'current' && month !== 'last30',
-                            // Previous Period Object for Comparisons
                             prev: {
                                 total: prev.total,
                                 conversions: prev.careApps + prev.nurseApps + prev.supportApps,
-                                careConversions: prev.careApps,
-                                nursingConversions: prev.nurseApps,
-                                supportConversions: prev.supportApps,
+                                careConversions: prev.careApps, nursingConversions: prev.nurseApps, supportConversions: prev.supportApps,
                                 ctr: prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount).toFixed(2) : 0
                             }
                         };
