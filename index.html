@@ -41,7 +41,6 @@
         };
 
         // --- 2. SMART DATA MAPPER ---
-        // Handles the specific column names from your Porter Metrics export
         const mapRow = (headers, row) => {
             const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '' };
             
@@ -61,7 +60,7 @@
                         // SPEND
                         if (header === 'Amount spent (GBP)' || header === 'Cost' || header === 'Amount spent') obj.Cost = num;
                         
-                        // BUDGET (The Fix: Handle Pence vs Pounds)
+                        // BUDGET (Handle Pence vs Pounds)
                         else if (header.includes('budget')) {
                             if (header === 'Adset daily budget') obj.DailyBudget = num / 100; // Fix: 800p -> £8.00
                             else if (header === 'Budget Amount') obj.DailyBudget = num;       // Fix: £29 -> £29.00
@@ -87,6 +86,16 @@
         // --- 3. VISUAL COMPONENTS ---
 
         const Card = ({ children }) => <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 animate-fade-in">{children}</div>;
+
+        // RESTORED COMPONENT
+        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
+            <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-gray-700">View Period:</label>
+                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="px-4 py-2 border rounded-lg text-sm bg-white">
+                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label} {m.isCurrent ? '(Current)' : ''}</option>)}
+                </select>
+            </div>
+        );
 
         const KPICard = ({ label, value, icon, color = "blue" }) => {
             const theme = {
