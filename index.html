@@ -11,6 +11,12 @@
     <style>
         body { background-color: #f8fafc; font-family: -apple-system, system-ui, sans-serif; }
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
+        
+        /* Flip Card Styles */
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
     </style>
 </head>
 <body class="p-6">
@@ -21,16 +27,12 @@
 
         // --- HELPERS ---
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
+        const formatMoneyDec = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 2 }).format(val);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val);
 
         const normalize = (text) => {
             if (!text) return '';
-            return text.toLowerCase()
-                .replace(/–/g, '-')
-                .replace(/—/g, '-')
-                .replace(/\|/g, '')
-                .replace(/\s+/g, ' ')
-                .trim();
+            return text.toLowerCase().replace(/–/g, '-').replace(/—/g, '-').replace(/\|/g, '').replace(/\s+/g, ' ').trim();
         };
 
         const parseSheetDate = (dateStr) => {
@@ -72,7 +74,10 @@
                                 if (num < 20) {
                                     if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                     else if (header.includes('Support Worker')) obj.SupportApps = num;
-                                    else if (header.includes('Care') || lower.includes('care')) obj.CareApps = num;
+                                    else if (header.includes('Care') || lower.includes('care')) {
+                                        obj.RawCare = num;
+                                        obj.CareApps = num;
+                                    }
                                 }
                             }
                         }
@@ -83,42 +88,6 @@
         };
 
         // --- COMPONENTS ---
-        const DebugPanel = ({ logs }) => {
-            if (!logs || logs.length === 0) return null;
-            return (
-                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
-                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Debug Analysis Log</h3>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="text-slate-500">
-                                    <th className="pb-2">Client</th>
-                                    <th className="pb-2">Source</th>
-                                    <th className="pb-2">Date</th>
-                                    <th className="pb-2">Campaign</th>
-                                    <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Counted</th>
-                                    <th className="pb-2 pl-4">Note</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-800">
-                                {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-800">
-                                        <td className="py-2 text-blue-400">{log.client}</td>
-                                        <td className="py-2 opacity-70">{log.tab}</td>
-                                        <td className="py-2">{log.date}</td>
-                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
-                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
-                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
-        };
 
         const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
             <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
@@ -129,7 +98,10 @@
             </div>
         );
 
-        const KPICard = ({ label, value, icon, color, trend, prevValue }) => {
+        // UPDATED: Interactive Flip Card for Metrics
+        const KPICard = ({ label, value, icon, color, trend, prevValue, details }) => {
+            const [flipped, setFlipped] = useState(false);
+            
             const theme = {
                 green: "bg-emerald-50 text-emerald-700 border-emerald-200",
                 blue: "bg-blue-50 text-blue-700 border-blue-200",
@@ -146,27 +118,54 @@
                 if (isCPA) trendColor = isPositive ? "text-red-700 bg-red-100" : "text-emerald-700 bg-emerald-100";
                 else trendColor = isPositive ? "text-emerald-700 bg-emerald-100" : "text-red-700 bg-red-100";
             }
-            
+
             return (
-                <div className={`p-4 rounded-xl border ${theme} flex flex-col justify-center h-full relative`}>
-                    <div className="flex justify-between items-start mb-2">
-                        <div className="flex items-center gap-2 opacity-90">
-                            <span className="text-xl">{icon}</span>
-                            <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
-                        </div>
-                        {trend !== undefined && !isNaN(trend) && isFinite(trend) && (
-                            <div className={`text-xs font-bold px-2 py-1 rounded-full ${trendColor}`}>
-                                {arrow} {Math.abs(trend).toFixed(0)}%
+                <div 
+                    className="perspective-1000 h-32 cursor-pointer group"
+                    onClick={() => setFlipped(!flipped)}
+                >
+                    <div className={`relative w-full h-full transition-transform duration-500 transform-style-3d ${flipped ? 'rotate-y-180' : ''}`}>
+                        
+                        {/* FRONT FACE */}
+                        <div className={`absolute w-full h-full backface-hidden p-4 rounded-xl border ${theme} flex flex-col justify-center shadow-sm group-hover:shadow-md transition-shadow`}>
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-2 opacity-90">
+                                    <span className="text-xl">{icon}</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
+                                </div>
+                                {trend !== undefined && !isNaN(trend) && isFinite(trend) && (
+                                    <div className={`text-xs font-bold px-2 py-1 rounded-full ${trendColor}`}>
+                                        {arrow} {Math.abs(trend).toFixed(0)}%
+                                    </div>
+                                )}
                             </div>
-                        )}
+                            <div className="text-2xl font-bold">{value}</div>
+                            {prevValue && <div className="text-xs opacity-60 mt-1 font-medium">vs {prevValue} prev</div>}
+                            
+                            <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px]">
+                                ↻ Click for split
+                            </div>
+                        </div>
+
+                        {/* BACK FACE */}
+                        <div className={`absolute w-full h-full backface-hidden rotate-y-180 p-4 rounded-xl border bg-white border-gray-200 flex flex-col justify-center shadow-sm`}>
+                            <div className="text-xs font-bold uppercase text-gray-400 mb-2 text-center">{label} Split</div>
+                            <div className="grid grid-cols-2 gap-2 text-center">
+                                <div className="bg-orange-50 p-2 rounded">
+                                    <div className="text-[10px] font-bold text-orange-600 uppercase">Google</div>
+                                    <div className="font-bold text-gray-800 text-sm">{details?.google || '-'}</div>
+                                </div>
+                                <div className="bg-blue-50 p-2 rounded">
+                                    <div className="text-[10px] font-bold text-blue-600 uppercase">Meta</div>
+                                    <div className="font-bold text-gray-800 text-sm">{details?.facebook || '-'}</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div className="text-2xl font-bold">{value}</div>
-                    {prevValue && <div className="text-xs opacity-60 mt-1 font-medium">vs {prevValue} prev</div>}
                 </div>
             );
         };
 
-        // UPDATED GAUGE COMPONENT
         const Gauge = ({ pct, label, sub, color, detail }) => {
             const r = 40, c = 2 * Math.PI * r;
             const off = c - (Math.min(pct, 100) / 100) * c;
@@ -267,18 +266,33 @@
         const ClientCard = ({ client }) => {
             const [open, setOpen] = useState(false);
             
-            let kpi = { lbl: 'Conversions', val: client.conversions, icon: '🎯', prev: client.prev.conversions };
-            if (client.name.includes('Nursing')) kpi = { lbl: 'Nurse Apps', val: client.nursingConversions, icon: '👩‍⚕️', prev: client.prev.nursingConversions };
-            else if (client.name.includes('Brandon')) kpi = { lbl: 'Support Apps', val: client.supportConversions + client.careConversions, icon: '📝', prev: client.prev.supportConversions + client.prev.careConversions };
-            else if (client.name.includes('Care') || client.name.includes('HC-One')) kpi = { lbl: 'Care Apps', val: client.careConversions, icon: '🏥', prev: client.prev.careConversions };
+            // MAIN KPI LOGIC (Nurse vs Care vs Support)
+            let type = 'Conversions'; 
+            let icon = '🎯';
+            
+            let gVal = client.gConversions, fVal = client.fConversions;
+            
+            if (client.name.includes('Nursing')) { type = 'Nurse Apps'; icon = '👩‍⚕️'; gVal = client.gNurse; fVal = client.fNurse; }
+            else if (client.name.includes('Brandon')) { type = 'Support Apps'; icon = '📝'; gVal = client.gSupport + client.gCare; fVal = client.fSupport + client.fCare; }
+            else if (client.name.includes('Care') || client.name.includes('HC-One') || client.name.includes('Apollo')) { type = 'Care Apps'; icon = '🏥'; gVal = client.gCare; fVal = client.fCare; }
 
+            const totalVal = gVal + fVal;
+            const totalPrev = client.prev ? (client.prev.gVal + client.prev.fVal) : 0; // Simplified prev for trend
+
+            // CPA Calculation
+            const gCpa = gVal > 0 ? client.google / gVal : 0;
+            const fCpa = fVal > 0 ? client.facebook / fVal : 0;
+            const totalCpa = totalVal > 0 ? client.total / totalVal : 0;
+
+            // CTR
+            const gCtr = client.gCtrCount > 0 ? (client.gCtrSum / client.gCtrCount) : 0;
+            const fCtr = client.fCtrCount > 0 ? (client.fCtrSum / client.fCtrCount) : 0;
+            const totalCtr = (client.gCtrCount + client.fCtrCount) > 0 ? ((client.gCtrSum + client.fCtrSum) / (client.gCtrCount + client.fCtrCount)) : 0;
+
+            // Trends (Simplified)
             const calcTrend = (curr, prev) => prev > 0 ? ((curr - prev) / prev) * 100 : 0;
-            const convTrend = calcTrend(kpi.val, kpi.prev);
-            const cpa = kpi.val > 0 ? client.total / kpi.val : 0;
-            const prevCpa = kpi.prev > 0 ? client.prev.total / kpi.prev : 0;
-            const cpaTrend = calcTrend(cpa, prevCpa);
-            const ctrTrend = calcTrend(client.ctr, client.prev.ctr);
-
+            // Note: Previous data is aggregated, so per-platform trends are not available in this simplified view, only Total trends.
+            
             return (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
                     <div className="flex justify-between items-start mb-6">
@@ -293,13 +307,12 @@
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 mb-6">
-                        {/* UPDATED: Passed detail prop to Gauge */}
                         <Gauge 
                             pct={client.pctUsed} 
                             label="Budget" 
                             sub={`${client.pctUsed.toFixed(0)}%`} 
-                            color={client.pctUsed > 100 ? '#ef4444' : '#10b981'}
-                            detail={`${formatMoney(client.total)} / ${formatMoney(client.budget)}`} 
+                            color={client.pctUsed > 100 ? '#ef4444' : '#10b981'} 
+                            detail={`${formatMoney(client.total)} / ${formatMoney(client.budget)}`}
                         />
                         <div className="flex flex-col items-center justify-center p-2 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="text-xs font-bold text-gray-400 uppercase mb-2">Pace</div>
@@ -309,9 +322,42 @@
                     </div>
 
                     <div className="grid grid-cols-3 gap-3">
-                        <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} />
-                        <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} />
-                        <KPICard label="CTR" value={`${client.ctr}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr}%` : null} />
+                        {/* CONVERSIONS CARD */}
+                        <KPICard 
+                            label={type} 
+                            value={formatNumber(Math.floor(totalVal))} 
+                            icon={icon} 
+                            color="green" 
+                            trend={calcTrend(totalVal, client.prev.conversions)}
+                            details={{
+                                google: formatNumber(Math.floor(gVal)),
+                                facebook: formatNumber(Math.floor(fVal))
+                            }}
+                        />
+                        {/* CPA CARD */}
+                        <KPICard 
+                            label="CPA" 
+                            value={totalCpa ? `£${totalCpa.toFixed(2)}` : '-'} 
+                            icon="💰" 
+                            color="blue" 
+                            trend={calcTrend(totalCpa, client.prev.cpa)}
+                            details={{
+                                google: gCpa ? `£${gCpa.toFixed(2)}` : '-',
+                                facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-'
+                            }}
+                        />
+                        {/* CTR CARD */}
+                        <KPICard 
+                            label="CTR" 
+                            value={`${totalCtr.toFixed(2)}%`} 
+                            icon="👆" 
+                            color="orange" 
+                            trend={calcTrend(totalCtr, client.prev.ctr)}
+                            details={{
+                                google: `${gCtr.toFixed(2)}%`,
+                                facebook: `${fCtr.toFixed(2)}%`
+                            }}
+                        />
                     </div>
 
                     <BudgetAction client={client} />
@@ -338,8 +384,6 @@
             const [loading, setLoading] = useState(false);
             const [month, setMonth] = useState('current');
             const [latestDataDate, setLatestDataDate] = useState(null);
-            const [debug, setDebug] = useState(false);
-            const [debugLogs, setDebugLogs] = useState([]);
             
             const PROXY = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SHEET = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
@@ -347,7 +391,6 @@
 
             const getDates = (type, sel) => {
                 const now = latestDataDate ? new Date(latestDataDate) : new Date();
-                
                 if (sel === 'last30') {
                     const end = now;
                     const start = new Date(now); start.setDate(now.getDate() - 30);
@@ -355,7 +398,6 @@
                     const prevStart = new Date(prevEnd); prevStart.setDate(prevEnd.getDate() - 30);
                     return { start, end, prevStart, prevEnd };
                 }
-
                 let y = now.getFullYear(), m = now.getMonth();
                 if (sel !== 'current') {
                     const parts = sel.split('-');
@@ -363,27 +405,23 @@
                 }
                 const make = (d) => new Date(y, m, d);
                 const makePrev = (d) => new Date(y, m - 1, d);
-
                 let cur = {};
                 if (type === 'apollo') cur = (sel === 'current' && now.getDate() >= 26) ? { start: make(26), end: new Date(y, m+1, 25) } : { start: makePrev(26), end: make(25) };
                 else if (type === 'brandon') cur = (sel === 'current' && now.getDate() >= 21) ? { start: make(21), end: new Date(y, m+1, 20) } : { start: makePrev(21), end: make(20) };
                 else if (type === 'hc1') cur = (sel === 'current' && now.getDate() >= 11) ? { start: make(11), end: new Date(y, m+1, 10) } : { start: makePrev(11), end: make(10) };
                 else cur = { start: new Date(y, m, 1), end: new Date(y, m+1, 0) };
-
+                
                 let prevEnd = new Date(cur.end); prevEnd.setMonth(prevEnd.getMonth() - 1);
                 const prevStart = new Date(cur.start); prevStart.setMonth(prevStart.getMonth() - 1);
-                
                 if (sel === 'current') {
                     const msPassed = now - cur.start;
                     prevEnd = new Date(prevStart.getTime() + msPassed);
                 }
-
                 return { ...cur, prevStart, prevEnd };
             };
 
             const load = async () => {
                 setLoading(true);
-                setDebugLogs([]);
                 try {
                     const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=Config!A:F&apiKey=${KEY}`);
                     const cfgJson = await cfgRes.json();
@@ -424,19 +462,19 @@
                             if (d.Date && d.Date.getTime() > maxTs) maxTs = d.Date.getTime();
                         });
                     });
-                    
                     if (maxTs > 0) setLatestDataDate(new Date(maxTs));
-
-                    const tempLogs = [];
 
                     const results = clients.map(client => {
                         const currentRef = maxTs > 0 ? new Date(maxTs) : new Date();
                         const dates = getDates(client.type, month);
                         const label = `${dates.start.toLocaleDateString('en-GB')} - ${dates.end.toLocaleDateString('en-GB')}`;
                         
-                        let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
-                        let prev = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
+                        // SEPARATE STATS FOR GOOGLE / FACEBOOK TO SUPPORT FLIP CARDS
+                        let g = { spend:0, care:0, nurse:0, support:0, ctrSum:0, ctrCount:0 };
+                        let f = { spend:0, care:0, nurse:0, support:0, ctrSum:0, ctrCount:0 };
                         
+                        let prev = { total: 0, conversions:0, cpa:0, ctr:0, careConversions:0, nursingConversions:0, supportConversions:0, ctrSum:0, ctrCount:0 };
+
                         let gBudgets = new Map(), fBudgets = new Map();
                         let maxDateG = 0, maxDateF = 0;
 
@@ -457,36 +495,25 @@
                                     if (regions.some(reg => rowText.includes(normalize(reg)))) return;
                                 }
 
-                                const inCurrent = d.Date >= dates.start && d.Date <= dates.end;
-                                
-                                if (inCurrent && (d.Cost > 0 || d.CareApps > 0 || d.NurseApps > 0 || d.RawCare > 0)) {
-                                    tempLogs.push({
-                                        client: client.name,
-                                        tab: tabName,
-                                        date: d.Date.toLocaleDateString('en-GB'),
-                                        camp: d.Campaign || d.Adset,
-                                        spend: d.Cost,
-                                        careApps: d.CareApps,
-                                        rawCare: d.RawCare,
-                                        note: isConv ? 'From Conversion Tab' : d.RawCare > 5 ? 'Ignored High Value' : 'Matched'
-                                    });
-                                }
-
-                                if (inCurrent) {
-                                    if (isConv) { stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; }
-                                    else {
-                                        stats.total += d.Cost;
-                                        if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
-                                        stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
+                                // CURRENT PERIOD
+                                if (d.Date >= dates.start && d.Date <= dates.end) {
+                                    const target = tabName.includes('Google') ? g : f;
+                                    if (isConv) { 
+                                        target.care += d.CareApps; target.nurse += d.NurseApps; 
+                                    } else {
+                                        target.spend += d.Cost;
+                                        if (d.CTR > 0) { target.ctrSum += d.CTR; target.ctrCount++; }
+                                        target.care += d.CareApps; target.nurse += d.NurseApps; target.support += d.SupportApps;
                                     }
                                 }
 
+                                // PREVIOUS PERIOD (Aggregated for trends)
                                 if (d.Date >= dates.prevStart && d.Date <= dates.prevEnd) {
-                                    if (isConv) { prev.careApps += d.CareApps; prev.nurseApps += d.NurseApps; }
+                                    if (isConv) { prev.careConversions += d.CareApps; prev.nursingConversions += d.NurseApps; }
                                     else {
                                         prev.total += d.Cost;
                                         if (d.CTR > 0) { prev.ctrSum += d.CTR; prev.ctrCount++; }
-                                        prev.careApps += d.CareApps; prev.nurseApps += d.NurseApps; prev.supportApps += d.SupportApps;
+                                        prev.careConversions += d.CareApps; prev.nursingConversions += d.NurseApps; prev.supportConversions += d.SupportApps;
                                     }
                                 }
 
@@ -516,32 +543,56 @@
                         const passed = Math.max(1, Math.min(daysTotal, Math.ceil((today - dates.start) / 86400000)));
                         const left = Math.max(0, daysTotal - passed);
                         
-                        const avg = passed > 0 ? stats.total / passed : 0;
-                        const proj = stats.total + (avg * left);
+                        const totalSpend = g.spend + f.spend;
+                        const avg = passed > 0 ? totalSpend / passed : 0;
+                        const proj = totalSpend + (avg * left);
                         
                         let status = 'ON TRACK';
                         if (proj > client.budget * 1.05) status = 'HOT';
                         else if (proj < client.budget * 0.95) status = 'COLD';
-                        if (stats.total >= client.budget) status = 'OVER BUDGET';
+                        if (totalSpend >= client.budget) status = 'OVER BUDGET';
+
+                        // PREV CALCULATIONS
+                        prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
+                        prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
+                        prev.ctr = prev.ctrCount > 0 ? prev.ctrSum / prev.ctrCount : 0;
+                        
+                        // Determine KPI Vals for Flip Card
+                        let gVal=0, fVal=0; 
+                        if(client.name.includes('Nursing')){ gVal=g.nurse; fVal=f.nurse; }
+                        else if(client.name.includes('Brandon')){ gVal=g.support; fVal=f.support; }
+                        else { gVal=g.care; fVal=f.care; } // Default Care Apps
 
                         return {
-                            ...client, ...stats, periodLabel: label, daysLeft: left, projected: proj, pctUsed: (stats.total/client.budget)*100, status,
+                            ...client, 
+                            periodLabel: label, daysLeft: left, projected: proj, pctUsed: (totalSpend/client.budget)*100, status,
                             currentDailyBudget: gDaily + fDaily,
                             googleDailyBudget: gDaily, facebookDailyBudget: fDaily,
-                            conversions: stats.careApps + stats.nurseApps + stats.supportApps,
-                            careConversions: stats.careApps, nursingConversions: stats.nurseApps, supportConversions: stats.supportApps,
-                            ctr: stats.ctrCount > 0 ? (stats.ctrSum / stats.ctrCount).toFixed(2) : 0,
+                            
+                            // Split Data for Flip Cards
+                            google: g.spend, facebook: f.spend,
+                            gConversions: g.care + g.nurse + g.support,
+                            fConversions: f.care + f.nurse + f.support,
+                            
+                            gCare: g.care, fCare: f.care,
+                            gNurse: g.nurse, fNurse: f.nurse,
+                            gSupport: g.support, fSupport: f.support,
+
+                            gCtrSum: g.ctrSum, gCtrCount: g.ctrCount,
+                            fCtrSum: f.ctrSum, fCtrCount: f.ctrCount,
+
+                            total: totalSpend,
+                            conversions: (g.care+f.care) + (g.nurse+f.nurse) + (g.support+f.support),
+                            careConversions: g.care + f.care,
+                            nursingConversions: g.nurse + f.nurse,
+                            supportConversions: g.support + f.support,
+                            ctr: (g.ctrCount+f.ctrCount) > 0 ? (g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount) : 0,
+                            
                             isHistorical: month !== 'current' && month !== 'last30',
-                            prev: {
-                                total: prev.total,
-                                conversions: prev.careApps + prev.nurseApps + prev.supportApps,
-                                careConversions: prev.careApps, nursingConversions: prev.nurseApps, supportConversions: prev.supportApps,
-                                ctr: prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount).toFixed(2) : 0
-                            }
+                            prev: prev
                         };
                     });
                     
-                    setDebugLogs(tempLogs);
                     setData(results);
                 } catch(e) { console.error(e); }
                 setLoading(false);
@@ -561,21 +612,14 @@
                     <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
                         <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Client Budgets</h1>
                         <div className="flex gap-4">
-                            <button onClick={() => setDebug(!debug)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${debug ? 'bg-red-600 text-white border-red-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}>
-                                {debug ? 'Debug ON' : 'Debug OFF'}
-                            </button>
                             <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={months} />
                             <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors shadow-sm">Refresh</button>
                         </div>
                     </div>
-                    
                     {loading && <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
-                    
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
                         {data.map(c => <ClientCard key={c.name} client={c} />)}
                     </div>
-
-                    {debug && <DebugPanel logs={debugLogs} />}
                 </div>
             );
         };
