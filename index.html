@@ -9,8 +9,9 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #f8fafc; font-family: -apple-system, system-ui, sans-serif; }
-        .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
+        body { background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .gauge-bg { stroke: #e2e8f0; }
+        .transition-all { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 500ms; }
     </style>
 </head>
 <body class="p-6">
@@ -26,7 +27,7 @@
         const parseSheetDate = (dateStr) => {
             if (!dateStr) return null;
             const s = String(dateStr).trim();
-            // ISO (2025-01-01) - Standard in your file
+            // ISO (2025-01-01)
             const iso = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
             if (iso) return new Date(iso[1], iso[2] - 1, iso[3]);
             // UK (01/01/2025)
@@ -37,7 +38,8 @@
         };
 
         const mapRow = (headers, row) => {
-            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '' };
+            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '' };
+            
             headers.forEach((h, i) => {
                 if (!h || !row[i]) return;
                 const header = h.trim();
@@ -46,21 +48,27 @@
 
                 if (lower === 'date' || lower === 'day') obj.Date = parseSheetDate(val);
                 else if (lower.includes('adset name')) obj.Adset = val;
+                else if (lower.includes('campaign')) obj.Campaign = val;
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
                         // SPEND
-                        if (lower === 'amount spent (gbp)' || lower === 'cost' || lower === 'amount spent') obj.Cost = num;
-                        // BUDGET (Fixing the Pence vs Pounds issue)
+                        if (lower.includes('amount spent') || lower === 'cost') obj.Cost = num;
+                        
+                        // BUDGET (Fixing Pence vs Pounds)
                         else if (lower.includes('budget')) {
-                            if (lower === 'adset daily budget') obj.DailyBudget = num / 100; // FB (Pence)
-                            else if (lower === 'budget amount') obj.DailyBudget = num;       // Google (Pounds)
+                            // Meta usually exports in pence/cents (e.g. 800) -> Convert to 8.00
+                            if (lower.includes('adset')) obj.DailyBudget = num / 100;
+                            // Google usually exports in currency (e.g. 29.00) -> Keep
+                            else obj.DailyBudget = num;
                         }
+                        
                         // CTR
                         else if (lower.includes('ctr')) obj.CTR = num;
+                        
                         // CONVERSIONS
-                        else if (lower.includes('conversion') || lower.includes('application')) {
-                            if (!lower.includes('cost') && !lower.includes('rate')) {
+                        else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
+                            if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
                                 if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                 else if (header.includes('Support Worker')) obj.SupportApps = num;
                                 else if (header.includes('Care') || lower.includes('care')) obj.CareApps = num;
@@ -75,10 +83,14 @@
         // --- COMPONENTS ---
 
         const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
-            <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-gray-700">View Period:</label>
-                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="px-4 py-2 border rounded-lg text-sm bg-white shadow-sm">
-                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label} {m.isCurrent ? '(Current)' : ''}</option>)}
+            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
+                <select 
+                    value={selectedMonth} 
+                    onChange={(e) => onMonthChange(e.target.value)} 
+                    className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8"
+                >
+                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
             </div>
         );
@@ -108,9 +120,9 @@
                 <div className="flex flex-col items-center justify-center relative">
                     <div className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</div>
                     <svg width="96" height="96" className="-rotate-90">
-                        <circle cx="48" cy="48" r={r} stroke="#f1f5f9" strokeWidth="8" fill="none" />
+                        <circle cx="48" cy="48" r={r} stroke="#e2e8f0" strokeWidth="8" fill="none" />
                         <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
-                            style={{ strokeDasharray: c, strokeDashoffset: off }} className="gauge-fill" />
+                            style={{ strokeDasharray: c, strokeDashoffset: off }} className="transition-all duration-1000" />
                     </svg>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pt-4 font-bold text-gray-700">
                         {sub}
@@ -124,7 +136,7 @@
                 const diff = client.budget - client.total;
                 const under = diff >= 0;
                 return (
-                    <div className={`mt-4 p-4 rounded-xl border flex justify-between items-center ${under ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                    <div className={`mt-6 p-4 rounded-xl border flex justify-between items-center ${under ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
                         <span className="font-bold">{under ? 'Under Budget' : 'Over Budget'}</span>
                         <span className="font-mono font-bold text-lg">{under ? '-' : '+'}{formatMoney(Math.abs(diff))}</span>
                     </div>
@@ -158,7 +170,6 @@
                 normal: "Adjust Spend"
             }[status];
 
-            // Split Logic
             let gRec = 0, fRec = 0;
             const totalCur = client.googleDailyBudget + client.facebookDailyBudget;
             if (client.name.includes('Brandon')) { fRec = target; }
@@ -226,7 +237,7 @@
                         <Gauge pct={(client.projected/client.budget)*100} label="Projected" sub={formatMoney(client.projected)} color="#3b82f6" />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3 mb-6">
+                    <div className="grid grid-cols-3 gap-3">
                         <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" />
                         <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" />
                         <KPICard label="CTR" value={`${client.ctr}%`} icon="👆" color="orange" />
@@ -239,7 +250,7 @@
                             <span>Details</span><span>{open ? 'Hide' : 'Show'}</span>
                         </button>
                         {open && (
-                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl border border-gray-100 animate-fade-in">
                                 <div className="flex justify-between"><span>Spent</span><strong>{formatMoney(client.total)}</strong></div>
                                 <div className="flex justify-between"><span>Budget</span><strong>{formatMoney(client.budget)}</strong></div>
                                 <div className="flex justify-between"><span>Daily (Actual)</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
@@ -250,8 +261,6 @@
                 </div>
             );
         };
-
-        // --- MAIN APP ---
 
         const Dashboard = () => {
             const [data, setData] = useState([]);
@@ -264,6 +273,14 @@
 
             const getDates = (type, sel) => {
                 const now = new Date();
+                
+                // If "Last 30 Days" selected
+                if (sel === 'last30') {
+                    const start = new Date();
+                    start.setDate(now.getDate() - 30);
+                    return { start, end: now };
+                }
+
                 let y = now.getFullYear(), m = now.getMonth();
                 if (sel !== 'current') {
                     const parts = sel.split('-');
@@ -281,12 +298,14 @@
             const load = async () => {
                 setLoading(true);
                 try {
+                    // 1. Config
                     const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=Config!A:F&apiKey=${KEY}`);
                     const cfgJson = await cfgRes.json();
                     const clients = cfgJson.values.slice(1).map(r => ({
                         name: r[0], budget: parseFloat(r[1].replace(/,/g, '')), type: r[2], prefix: r[3] || r[0], skip: r[4] === 'TRUE', camps: r[5] ? r[5].split(',') : []
                     }));
 
+                    // 2. Fetch Unique Tabs (Shared Cache)
                     const prefixes = [...new Set(clients.map(c => c.prefix))];
                     const cache = {};
 
@@ -309,13 +328,14 @@
                         await Promise.all([fetchRange('Google'), fetchRange('FB'), fetchConv()]);
                     }));
 
+                    // 3. Process
                     const results = clients.map(client => {
                         const dates = getDates(client.type, month);
                         const label = `${dates.start.toLocaleDateString('en-GB')} - ${dates.end.toLocaleDateString('en-GB')}`;
                         let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
                         
-                        let maxDateG = 0, maxDateF = 0;
                         let gBudgets = new Map(), fBudgets = new Map();
+                        let maxDateG = 0, maxDateF = 0;
 
                         const processTab = (tabName, isConv = false) => {
                             const rows = cache[tabName];
@@ -325,30 +345,28 @@
                                 const d = mapRow(h, r);
                                 if (!d.Date) return;
                                 
+                                // Loose Campaign Matching
+                                const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign||d.Adset||'').toLowerCase().includes(c.trim().toLowerCase()));
+                                
                                 if (d.Date >= dates.start && d.Date <= dates.end) {
                                     if (isConv) {
                                         stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps;
-                                    } else {
-                                        const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign||d.Adset||'').includes(c.trim()));
-                                        if (match) {
-                                            stats.total += d.Cost;
-                                            if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
-                                            stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
-                                        }
+                                    } else if (match) {
+                                        stats.total += d.Cost;
+                                        if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
+                                        stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
                                     }
                                 }
 
-                                if (d.DailyBudget > 0 && !isConv) {
-                                    const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign||d.Adset||'').includes(c.trim()));
-                                    if (match) {
-                                        const t = d.Date.getTime();
-                                        if (tabName.includes('Google')) {
-                                            if (t > maxDateG) { maxDateG = t; gBudgets.clear(); }
-                                            if (t === maxDateG) gBudgets.set(d.Campaign||'def', d.DailyBudget);
-                                        } else {
-                                            if (t > maxDateF) { maxDateF = t; fBudgets.clear(); }
-                                            if (t === maxDateF) fBudgets.set(d.Adset||'def', d.DailyBudget);
-                                        }
+                                // Capture Latest Budget (Regardless of date range)
+                                if (d.DailyBudget > 0 && !isConv && match) {
+                                    const t = d.Date.getTime();
+                                    if (tabName.includes('Google')) {
+                                        if (t > maxDateG) { maxDateG = t; gBudgets.clear(); }
+                                        if (t === maxDateG) gBudgets.set(d.Campaign||'def', d.DailyBudget);
+                                    } else {
+                                        if (t > maxDateF) { maxDateF = t; fBudgets.clear(); }
+                                        if (t === maxDateF) fBudgets.set(d.Adset||'def', d.DailyBudget);
                                     }
                                 }
                             });
@@ -364,7 +382,7 @@
 
                         const today = new Date();
                         const daysTotal = Math.ceil((dates.end - dates.start) / 86400000);
-                        const passed = Math.min(daysTotal, Math.ceil((today - dates.start) / 86400000));
+                        const passed = Math.max(1, Math.min(daysTotal, Math.ceil((today - dates.start) / 86400000)));
                         const left = Math.max(0, daysTotal - passed);
                         
                         const avg = passed > 0 ? stats.total / passed : 0;
@@ -382,7 +400,7 @@
                             conversions: stats.careApps + stats.nurseApps + stats.supportApps,
                             careConversions: stats.careApps, nursingConversions: stats.nurseApps, supportConversions: stats.supportApps,
                             ctr: stats.ctrCount > 0 ? (stats.ctrSum / stats.ctrCount).toFixed(2) : 0,
-                            isHistorical: month !== 'current'
+                            isHistorical: month !== 'current' && month !== 'last30'
                         };
                     });
                     setData(results);
@@ -392,18 +410,23 @@
 
             useEffect(() => { load(); }, [month]);
 
+            const months = [
+                {value:'current', label:'Current Period'}, 
+                {value:'last30', label:'Last 30 Days'},
+                {value:'2025-11', label:'Nov 2025'}, 
+                {value:'2025-10', label:'Oct 2025'}
+            ];
+
             return (
                 <div className="max-w-7xl mx-auto">
                     <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
                         <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Client Budgets</h1>
                         <div className="flex gap-4">
-                            <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={[
-                                {value:'current', label:'Current'}, {value:'2025-11', label:'Nov 2025'}, {value:'2025-10', label:'Oct 2025'}
-                            ]} />
-                            <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors">Refresh</button>
+                            <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={months} />
+                            <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors shadow-sm">Refresh</button>
                         </div>
                     </div>
-                    {loading && <div className="text-center py-20 text-gray-400 animate-pulse">Loading data...</div>}
+                    {loading && <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
                         {data.map(c => <ClientCard key={c.name} client={c} />)}
                     </div>
