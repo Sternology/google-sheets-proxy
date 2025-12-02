@@ -25,12 +25,7 @@
 
         const normalize = (text) => {
             if (!text) return '';
-            return text.toLowerCase()
-                .replace(/–/g, '-')
-                .replace(/—/g, '-')
-                .replace(/\|/g, '')
-                .replace(/\s+/g, ' ')
-                .trim();
+            return text.toLowerCase().replace(/–/g, '-').replace(/—/g, '-').replace(/\|/g, '').replace(/\s+/g, ' ').trim();
         };
 
         const parseSheetDate = (dateStr) => {
@@ -44,8 +39,9 @@
             return isNaN(d.getTime()) ? null : d;
         };
 
+        // --- MAPPER ---
         const mapRow = (headers, row) => {
-            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '' };
+            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', RawCare: 0 };
             headers.forEach((h, i) => {
                 if (!h || !row[i]) return;
                 const header = h.trim();
@@ -69,10 +65,12 @@
                         else if (lower.includes('ctr')) obj.CTR = num;
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                if (num < 20) {
-                                    if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
-                                    else if (header.includes('Support Worker')) obj.SupportApps = num;
-                                    else if (header.includes('Care') || lower.includes('care')) obj.CareApps = num;
+                                if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
+                                else if (header.includes('Support Worker')) obj.SupportApps = num;
+                                else if (header.includes('Care') || lower.includes('care')) {
+                                    obj.RawCare = num; // Store raw for debug
+                                    // If value is huge (>20), it's likely a Value, not a Count. Ignore it to prevent inflation.
+                                    if (num < 20) obj.CareApps = num; 
                                 }
                             }
                         }
@@ -83,6 +81,45 @@
         };
 
         // --- COMPONENTS ---
+
+        const DebugPanel = ({ logs }) => {
+            if (!logs || logs.length === 0) return null;
+            return (
+                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Debug Analysis Log</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="text-slate-500">
+                                    <th className="pb-2">Client</th>
+                                    <th className="pb-2">Source Tab</th>
+                                    <th className="pb-2">Date</th>
+                                    <th className="pb-2">Campaign / Adset</th>
+                                    <th className="pb-2 text-right">Spend</th>
+                                    <th className="pb-2 text-right">Raw Care</th>
+                                    <th className="pb-2 text-right">Counted Apps</th>
+                                    <th className="pb-2">Note</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                                {logs.map((log, i) => (
+                                    <tr key={i} className="hover:bg-slate-800 transition-colors">
+                                        <td className="py-2 text-blue-400 font-bold">{log.client}</td>
+                                        <td className="py-2 opacity-70">{log.tab}</td>
+                                        <td className="py-2">{log.date}</td>
+                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
+                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
+                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
+                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
 
         const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
             <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
@@ -287,13 +324,14 @@
             const [loading, setLoading] = useState(false);
             const [month, setMonth] = useState('current');
             const [latestDataDate, setLatestDataDate] = useState(null);
+            const [debug, setDebug] = useState(false);
+            const [debugLogs, setDebugLogs] = useState([]);
             
             const PROXY = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SHEET = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
 
             const getDates = (type, sel) => {
-                // IMPORTANT: Use the latest date from the file as "Today", or fallback to real today
                 const now = latestDataDate ? new Date(latestDataDate) : new Date();
                 
                 if (sel === 'last30') {
@@ -332,6 +370,7 @@
 
             const load = async () => {
                 setLoading(true);
+                setDebugLogs([]);
                 try {
                     const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=Config!A:F&apiKey=${KEY}`);
                     const cfgJson = await cfgRes.json();
@@ -364,7 +403,6 @@
                         await Promise.all([fetchRange('Google'), fetchRange('FB'), fetchConv()]);
                     }));
 
-                    // Find latest date in ALL data
                     Object.values(cache).forEach(rows => {
                         if (!rows || rows.length < 2) return;
                         const h = rows[0];
@@ -374,16 +412,13 @@
                         });
                     });
                     
-                    // Set Global "Now" based on data
                     if (maxTs > 0) setLatestDataDate(new Date(maxTs));
 
-                    // Process Clients
+                    const tempLogs = [];
+
                     const results = clients.map(client => {
-                        // Pass the detected "latestDate" to getDates via the state
-                        // NOTE: State updates are async, so we use maxTs here directly for immediate calculation
+                        // RE-CALC DATES with new MaxTS
                         const currentRef = maxTs > 0 ? new Date(maxTs) : new Date();
-                        
-                        // Local version of getDates for immediate use
                         const getDatesLocal = (type, sel) => {
                             const now = currentRef;
                             if (sel === 'last30') {
@@ -441,7 +476,23 @@
                                     if (regions.some(reg => rowText.includes(normalize(reg)))) return;
                                 }
 
-                                if (d.Date >= dates.start && d.Date <= dates.end) {
+                                const inCurrent = d.Date >= dates.start && d.Date <= dates.end;
+                                
+                                // DEBUG LOGGING
+                                if (inCurrent && (d.Cost > 0 || d.CareApps > 0 || d.NurseApps > 0 || d.RawCare > 0)) {
+                                    tempLogs.push({
+                                        client: client.name,
+                                        tab: tabName,
+                                        date: d.Date.toLocaleDateString('en-GB'),
+                                        camp: d.Campaign || d.Adset,
+                                        spend: d.Cost,
+                                        careApps: d.CareApps,
+                                        rawCare: d.RawCare,
+                                        note: isConv ? 'From Conversion Tab' : d.RawCare > 20 ? 'Ignored High Value' : 'Matched'
+                                    });
+                                }
+
+                                if (inCurrent) {
                                     if (isConv) { stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; }
                                     else {
                                         stats.total += d.Cost;
@@ -509,6 +560,8 @@
                             }
                         };
                     });
+                    
+                    setDebugLogs(tempLogs);
                     setData(results);
                 } catch(e) { console.error(e); }
                 setLoading(false);
@@ -528,14 +581,21 @@
                     <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
                         <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Client Budgets</h1>
                         <div className="flex gap-4">
+                            <button onClick={() => setDebug(!debug)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${debug ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'}`}>
+                                {debug ? 'Debug ON' : 'Debug OFF'}
+                            </button>
                             <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={months} />
                             <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors shadow-sm">Refresh</button>
                         </div>
                     </div>
+                    
                     {loading && <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
+                    
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
                         {data.map(c => <ClientCard key={c.name} client={c} />)}
                     </div>
+
+                    {debug && <DebugPanel logs={debugLogs} />}
                 </div>
             );
         };
