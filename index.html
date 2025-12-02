@@ -9,24 +9,28 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #f8fafc; font-family: -apple-system, system-ui, sans-serif; }
+        /* Dark Blue Background */
+        body { background-color: #0f172a; font-family: -apple-system, system-ui, sans-serif; }
+        
+        /* Gauge Transition */
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
         
-        /* Flip Card Styles */
+        /* Trendline Animation */
+        .draw-path {
+            stroke-dasharray: 1;
+            stroke-dashoffset: 1;
+            animation: draw 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+        @keyframes draw {
+            from { stroke-dashoffset: 1; }
+            to { stroke-dashoffset: 0; }
+        }
+        
+        /* Card Flip Perspective */
         .perspective-1000 { perspective: 1000px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
-        
-        /* Graph Animation */
-        .draw-path {
-            stroke-dasharray: 1000;
-            stroke-dashoffset: 1000;
-            animation: draw 2s ease-out forwards;
-        }
-        @keyframes draw {
-            to { stroke-dashoffset: 0; }
-        }
     </style>
 </head>
 <body class="p-6">
@@ -96,25 +100,22 @@
             return obj;
         };
 
-        // --- COMPONENTS ---
-
-        // NEW: Trend Chart Component
+        // --- NEW COMPONENT: TREND CHART ---
         const TrendChart = ({ dailyData }) => {
             const [expanded, setExpanded] = useState(false);
-
             if (!dailyData || dailyData.length < 2) return null;
 
-            // Prepare Data Points
+            // Sort data by date
+            const data = [...dailyData].sort((a,b) => a.date - b.date);
             const width = 100;
-            const height = 50;
-            const data = dailyData.sort((a,b) => a.date - b.date);
-            
-            // Normalization Helper (scales values 0-100 for the graph)
+            const height = 40;
+
+            // Normalization helper: Scales any metric to 0-100 range for the graph
             const getPath = (key) => {
-                const values = data.map(d => d[key] || 0);
-                const min = Math.min(...values);
-                const max = Math.max(...values);
-                if (max === min) return "";
+                const vals = data.map(d => d[key] || 0);
+                const min = Math.min(...vals);
+                const max = Math.max(...vals);
+                if (max === min) return ""; 
 
                 return data.map((d, i) => {
                     const x = (i / (data.length - 1)) * width;
@@ -127,41 +128,77 @@
                 <div className="mt-4 border-t border-gray-100 pt-2">
                     <button 
                         onClick={() => setExpanded(!expanded)}
-                        className="w-full flex items-center justify-between text-xs font-bold uppercase text-gray-400 hover:text-gray-600 tracking-wider py-2"
+                        className="w-full flex items-center justify-between text-[10px] font-bold uppercase text-gray-400 hover:text-gray-600 tracking-wider py-2 transition-colors"
                     >
-                        <span>Trend Analysis</span>
+                        <span>Performance Trends</span>
                         <span>{expanded ? 'Hide' : 'Show'}</span>
                     </button>
 
-                    <div className={`overflow-hidden transition-all duration-500 ease-in-out ${expanded ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
-                        <div className="bg-gray-50 rounded-lg p-3 mt-2">
-                            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24 overflow-visible">
+                    <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'}`}>
+                        <div className="bg-gray-50 rounded-lg p-3 mt-1 relative">
+                            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-20 overflow-visible">
                                 {/* Grid Lines */}
                                 <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" />
-                                <line x1="0" y1="25" x2="100" y2="25" stroke="#e5e7eb" strokeWidth="0.5" />
-                                <line x1="0" y1="50" x2="100" y2="50" stroke="#e5e7eb" strokeWidth="0.5" />
-                                
-                                {/* CPA Line (Blue) */}
-                                <polyline points={getPath('cpa')} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" />
-                                
-                                {/* Conversions Line (Green) */}
-                                <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.2s'}} />
-                                
-                                {/* CTR Line (Orange) */}
-                                <polyline points={getPath('ctr')} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.4s'}} />
+                                <line x1="0" y1="20" x2="100" y2="20" stroke="#e5e7eb" strokeWidth="0.5" />
+                                <line x1="0" y1="40" x2="100" y2="40" stroke="#e5e7eb" strokeWidth="0.5" />
+
+                                {/* Trends */}
+                                <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.1s'}} />
+                                <polyline points={getPath('cpa')} fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.3s'}} />
+                                <polyline points={getPath('ctr')} fill="none" stroke="#f97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.5s'}} />
                             </svg>
-                            
-                            <div className="flex justify-between text-[10px] text-gray-400 mt-2 font-mono">
+
+                            <div className="flex justify-between text-[8px] text-gray-400 mt-2 font-mono">
                                 <span>{data[0].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
                                 <span>{data[data.length-1].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
                             </div>
 
-                            <div className="flex justify-center gap-4 mt-2">
-                                <div className="flex items-center text-[10px] font-bold text-emerald-600"><div className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></div>Conv</div>
-                                <div className="flex items-center text-[10px] font-bold text-blue-600"><div className="w-2 h-2 rounded-full bg-blue-500 mr-1"></div>CPA</div>
-                                <div className="flex items-center text-[10px] font-bold text-orange-500"><div className="w-2 h-2 rounded-full bg-orange-500 mr-1"></div>CTR</div>
+                            <div className="flex justify-center gap-3 mt-2">
+                                <div className="flex items-center text-[9px] font-bold text-emerald-600"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1"></div>Conv</div>
+                                <div className="flex items-center text-[9px] font-bold text-blue-600"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1"></div>CPA</div>
+                                <div className="flex items-center text-[9px] font-bold text-orange-500"><div className="w-1.5 h-1.5 rounded-full bg-orange-500 mr-1"></div>CTR</div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- COMPONENTS ---
+        const DebugPanel = ({ logs }) => {
+            if (!logs || logs.length === 0) return null;
+            return (
+                <div className="mt-8 bg-slate-800 text-slate-300 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="text-slate-500">
+                                    <th className="pb-2">Client</th>
+                                    <th className="pb-2">Source</th>
+                                    <th className="pb-2">Date</th>
+                                    <th className="pb-2">Campaign</th>
+                                    <th className="pb-2 text-right">Spend</th>
+                                    <th className="pb-2 text-right">Raw</th>
+                                    <th className="pb-2 text-right">Counted</th>
+                                    <th className="pb-2 pl-4">Note</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-700">
+                                {logs.map((log, i) => (
+                                    <tr key={i} className="hover:bg-slate-700">
+                                        <td className="py-2 text-blue-400">{log.client}</td>
+                                        <td className="py-2 opacity-70">{log.tab}</td>
+                                        <td className="py-2">{log.date}</td>
+                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
+                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
+                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
+                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             );
@@ -220,11 +257,11 @@
                         <div className="absolute w-full h-full backface-hidden rotate-y-180 p-4 rounded-xl border bg-white border-gray-200 flex flex-col justify-center shadow-sm">
                             <div className="text-xs font-bold uppercase text-gray-400 mb-2 text-center">{label} Split</div>
                             <div className="grid grid-cols-2 gap-2 text-center">
-                                <div className="bg-orange-50 p-2 rounded">
+                                <div className="bg-orange-50 p-2 rounded border border-orange-100">
                                     <div className="text-[10px] font-bold text-orange-600 uppercase">Google</div>
                                     <div className="font-bold text-gray-800 text-sm">{details?.google || '-'}</div>
                                 </div>
-                                <div className="bg-blue-50 p-2 rounded">
+                                <div className="bg-blue-50 p-2 rounded border border-blue-100">
                                     <div className="text-[10px] font-bold text-blue-600 uppercase">Meta</div>
                                     <div className="font-bold text-gray-800 text-sm">{details?.facebook || '-'}</div>
                                 </div>
@@ -242,14 +279,18 @@
                 <div className="flex flex-col items-center justify-center relative">
                     <div className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</div>
                     <div className="relative flex items-center justify-center">
-                        <svg width="96" height="96" className="-rotate-90">
+                        <svg width="96" height="96" className="-rotate-90 transform">
                             <circle cx="48" cy="48" r={r} stroke="#e2e8f0" strokeWidth="8" fill="none" />
                             <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
                                 style={{ strokeDasharray: c, strokeDashoffset: off }} className="gauge-fill" />
                         </svg>
                         <div className="absolute font-bold text-gray-700 text-lg">{sub}</div>
                     </div>
-                    {detail && <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">{detail}</div>}
+                    {detail && (
+                        <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">
+                            {detail}
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -329,7 +370,6 @@
         };
 
         const ClientCard = ({ client }) => {
-            const [open, setOpen] = useState(false);
             
             let kpi = { lbl: 'Conversions', val: client.conversions, icon: '🎯', prev: client.prev.conversions };
             if (client.name.includes('Nursing')) kpi = { lbl: 'Nurse Apps', val: client.nursingConversions, icon: '👩‍⚕️', prev: client.prev.nursingConversions };
@@ -385,20 +425,6 @@
                     <TrendChart dailyData={client.dailyData} />
 
                     <BudgetAction client={client} />
-
-                    <div className="mt-auto pt-4 border-t border-gray-100">
-                        <button onClick={() => setOpen(!open)} className="w-full flex justify-between text-xs font-bold uppercase text-gray-400 hover:text-gray-600 tracking-wider">
-                            <span>Details</span><span>{open ? 'Hide' : 'Show'}</span>
-                        </button>
-                        {open && (
-                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl border border-gray-100 animate-fade-in">
-                                <div className="flex justify-between"><span>Spent</span><strong>{formatMoney(client.total)}</strong></div>
-                                <div className="flex justify-between"><span>Budget</span><strong>{formatMoney(client.budget)}</strong></div>
-                                <div className="flex justify-between"><span>Daily (Actual)</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
-                                <div className="flex justify-between"><span>Days Left</span><strong>{client.daysLeft}</strong></div>
-                            </div>
-                        )}
-                    </div>
                 </div>
             );
         };
@@ -408,6 +434,8 @@
             const [loading, setLoading] = useState(false);
             const [month, setMonth] = useState('current');
             const [latestDataDate, setLatestDataDate] = useState(null);
+            const [debug, setDebug] = useState(false);
+            const [debugLogs, setDebugLogs] = useState([]);
             
             const PROXY = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SHEET = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
@@ -446,6 +474,7 @@
 
             const load = async () => {
                 setLoading(true);
+                setDebugLogs([]);
                 try {
                     const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=Config!A:F&apiKey=${KEY}`);
                     const cfgJson = await cfgRes.json();
@@ -488,6 +517,8 @@
                     });
                     if (maxTs > 0) setLatestDataDate(new Date(maxTs));
 
+                    const tempLogs = [];
+
                     const results = clients.map(client => {
                         const currentRef = maxTs > 0 ? new Date(maxTs) : new Date();
                         const dates = getDates(client.type, month);
@@ -499,8 +530,8 @@
 
                         let gBudgets = new Map(), fBudgets = new Map();
                         let maxDateG = 0, maxDateF = 0;
-
-                        // NEW: Daily tracking for charts
+                        
+                        // New Daily Stats Map
                         const dailyMap = new Map();
 
                         const processTab = (tabName, isConv = false) => {
@@ -521,17 +552,26 @@
                                 }
 
                                 const inCurrent = d.Date >= dates.start && d.Date <= dates.end;
-
-                                // DAILY STATS LOGIC
+                                
                                 if (inCurrent) {
-                                    const key = d.Date.toISOString().split('T')[0];
-                                    if (!dailyMap.has(key)) dailyMap.set(key, { date: d.Date, cost: 0, conv: 0, ctrSum: 0, ctrCount: 0 });
-                                    const day = dailyMap.get(key);
+                                    // LOGIC FOR DEBUG
+                                    if (d.Cost > 0 || d.CareApps > 0 || d.NurseApps > 0 || d.RawCare > 0) {
+                                        tempLogs.push({
+                                            client: client.name, tab: tabName, date: d.Date.toLocaleDateString('en-GB'),
+                                            camp: d.Campaign || d.Adset, spend: d.Cost, careApps: d.CareApps, rawCare: d.RawCare,
+                                            note: isConv ? 'Conv Tab' : d.RawCare > 5 ? 'High Val Ignored' : 'Matched'
+                                        });
+                                    }
+
+                                    // DAILY DATA COLLECTION
+                                    const dateKey = d.Date.toISOString().split('T')[0];
+                                    if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, { date: d.Date, cost:0, conv:0, ctrSum:0, ctrCount:0 });
+                                    const day = dailyMap.get(dateKey);
 
                                     if (isConv) {
                                         const c = d.CareApps + d.NurseApps;
                                         day.conv += c;
-                                        // Aggregate totals
+                                        
                                         const target = tabName.includes('Google') ? g : f;
                                         target.care += d.CareApps; target.nurse += d.NurseApps;
                                     } else {
@@ -539,7 +579,7 @@
                                         if (d.CTR > 0) { day.ctrSum += d.CTR; day.ctrCount++; }
                                         const c = d.CareApps + d.NurseApps + d.SupportApps;
                                         day.conv += c;
-                                        
+
                                         const target = tabName.includes('Google') ? g : f;
                                         target.spend += d.Cost;
                                         if (d.CTR > 0) { target.ctrSum += d.CTR; target.ctrCount++; }
@@ -573,12 +613,12 @@
                         processTab(`${client.prefix} FB`);
                         processTab(`${client.prefix} Google Conversions`, true);
 
-                        // Process Daily Data for Chart
+                        // Finalize Daily Data Array
                         const dailyData = Array.from(dailyMap.values()).map(d => ({
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 // As percentage
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0
                         }));
 
                         let gDaily = 0, fDaily = 0;
@@ -602,7 +642,7 @@
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
                         prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) * 100 : 0;
-                        
+
                         return {
                             ...client, 
                             periodLabel: label, daysLeft: left, projected: proj, pctUsed: (totalSpend/client.budget)*100, status,
@@ -629,6 +669,7 @@
                         };
                     });
                     
+                    setDebugLogs(tempLogs);
                     setData(results);
                 } catch(e) { console.error(e); }
                 setLoading(false);
@@ -646,16 +687,23 @@
             return (
                 <div className="max-w-7xl mx-auto">
                     <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                        <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Client Budgets</h1>
+                        <h1 className="text-3xl font-bold text-white tracking-tight">Client Budgets</h1>
                         <div className="flex gap-4">
+                            <button onClick={() => setDebug(!debug)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${debug ? 'bg-red-600 text-white border-red-600' : 'bg-slate-800 text-gray-300 border-slate-700 hover:bg-slate-700'}`}>
+                                {debug ? 'Debug ON' : 'Debug OFF'}
+                            </button>
                             <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={months} />
-                            <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors shadow-sm">Refresh</button>
+                            <button onClick={load} className="bg-blue-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-blue-500 transition-colors shadow-sm">Refresh</button>
                         </div>
                     </div>
+                    
                     {loading && <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
+                    
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
                         {data.map(c => <ClientCard key={c.name} client={c} />)}
                     </div>
+
+                    {debug && <DebugPanel logs={debugLogs} />}
                 </div>
             );
         };
