@@ -92,7 +92,6 @@
                 const isPositive = trend > 0;
                 arrow = isPositive ? "↑" : "↓";
                 const isCPA = label.includes('CPA') || label.includes('Cost');
-                // For CPA, Up is Bad. For Conversions/CTR, Up is Good.
                 if (isCPA) trendColor = isPositive ? "text-red-700 bg-red-100" : "text-emerald-700 bg-emerald-100";
                 else trendColor = isPositive ? "text-emerald-700 bg-emerald-100" : "text-red-700 bg-red-100";
             }
@@ -328,14 +327,12 @@
                 else if (type === 'hc1') cur = (sel === 'current' && now.getDate() >= 11) ? { start: make(11), end: new Date(y, m+1, 10) } : { start: makePrev(11), end: make(10) };
                 else cur = { start: new Date(y, m, 1), end: new Date(y, m+1, 0) };
 
-                // Calculate Pro-Rata Comparison Date
+                // Calculate Pro-Rata Comparison
                 let prevEnd = new Date(cur.end); prevEnd.setMonth(prevEnd.getMonth() - 1);
                 const prevStart = new Date(cur.start); prevStart.setMonth(prevStart.getMonth() - 1);
                 
-                // If viewing CURRENT partial period, limit Previous view to the same # of days passed
                 if (sel === 'current') {
                     const msPassed = now - cur.start;
-                    // Comparison end = Previous Start + Time passed so far
                     prevEnd = new Date(prevStart.getTime() + msPassed);
                 }
 
@@ -393,6 +390,13 @@
                                 
                                 const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign||d.Adset||'').toLowerCase().includes(c.trim().toLowerCase()));
                                 if (!match) return;
+
+                                // HC-One Regional Exclusion Logic
+                                if (client.name.includes('England/Wales')) {
+                                    const regions = ['Midlands', 'North East', 'North West', 'Scotland', 'South', 'Yorkshire', 'Humber'];
+                                    const rowName = (d.Campaign || d.Adset || '').toLowerCase();
+                                    if (regions.some(reg => rowName.includes(reg.toLowerCase()))) return; // SKIP Regional items
+                                }
 
                                 // CURRENT
                                 if (d.Date >= dates.start && d.Date <= dates.end) {
