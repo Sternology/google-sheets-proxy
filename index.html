@@ -23,14 +23,14 @@
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val);
 
-        // Normalize text for campaign matching
+        // Normalize text: lowercase, fix dashes, remove extra spaces
         const normalize = (text) => {
             if (!text) return '';
             return text.toLowerCase()
-                .replace(/–/g, '-') // en-dash
-                .replace(/—/g, '-') // em-dash
-                .replace(/\|/g, '') // pipe
-                .replace(/\s+/g, ' ') // double spaces
+                .replace(/–/g, '-')
+                .replace(/—/g, '-')
+                .replace(/\|/g, '')
+                .replace(/\s+/g, ' ')
                 .trim();
         };
 
@@ -47,8 +47,9 @@
             return isNaN(d.getTime()) ? null : d;
         };
 
+        // --- MAPPER ---
         const mapRow = (headers, row) => {
-            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '' };
+            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', RawCare: 0 };
             headers.forEach((h, i) => {
                 if (!h || !row[i]) return;
                 const header = h.trim();
@@ -61,31 +62,28 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
-                        // SPEND (Exact match from your working code + flexibility)
-                        if (header === 'Amount spent (GBP)' || header === 'Amount spent' || header === 'Cost') {
-                            // Fix for "1280" vs "12.80" in FB exports. If > 500, likely pence.
-                            if (num > 500 && header.includes('Amount spent')) obj.Cost = num / 100;
+                        // SPEND
+                        if (lower.includes('amount spent') || lower === 'cost') {
+                            // FB Pence Fix: If value > 500 (e.g. 1280), assume pence -> £12.80
+                            if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
-                        
                         // BUDGET
                         else if (lower.includes('budget')) {
-                            if (lower.includes('adset')) obj.DailyBudget = num / 100; // FB Pence Fix
+                            if (lower.includes('adset')) obj.DailyBudget = num / 100; // FB Pence
                             else obj.DailyBudget = num; // Google Pounds
                         }
-                        
                         // CTR
                         else if (lower.includes('ctr')) obj.CTR = num;
-                        
                         // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
-                            // Ignore Cost/Rate/Value columns
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                // SAFETY CHECK: If value > 20, it's likely Currency (£70.30), not Count (1). Ignore it.
-                                if (num < 20) {
-                                    if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
-                                    else if (header.includes('Support Worker')) obj.SupportApps = num;
-                                    else if (header.includes('Care') || lower.includes('care')) obj.CareApps = num;
+                                if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
+                                else if (header.includes('Support Worker')) obj.SupportApps = num;
+                                else if (header.includes('Care') || lower.includes('care')) {
+                                    obj.RawCare = num;
+                                    // ANTI-INFLATION: Ignore values > 5 (Likely Currency, not Count)
+                                    if (num <= 5) obj.CareApps = num;
                                 }
                             }
                         }
@@ -96,6 +94,45 @@
         };
 
         // --- COMPONENTS ---
+
+        const DebugPanel = ({ logs }) => {
+            if (!logs || logs.length === 0) return null;
+            return (
+                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Debug Analysis Log</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="text-slate-500">
+                                    <th className="pb-2">Client</th>
+                                    <th className="pb-2">Source</th>
+                                    <th className="pb-2">Date</th>
+                                    <th className="pb-2">Campaign</th>
+                                    <th className="pb-2 text-right">Spend</th>
+                                    <th className="pb-2 text-right">Raw</th>
+                                    <th className="pb-2 text-right">Counted</th>
+                                    <th className="pb-2 pl-4">Note</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                                {logs.map((log, i) => (
+                                    <tr key={i} className="hover:bg-slate-800">
+                                        <td className="py-2 text-blue-400">{log.client}</td>
+                                        <td className="py-2 opacity-70">{log.tab}</td>
+                                        <td className="py-2">{log.date}</td>
+                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
+                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
+                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
+                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
 
         const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
             <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
@@ -300,6 +337,8 @@
             const [loading, setLoading] = useState(false);
             const [month, setMonth] = useState('current');
             const [latestDataDate, setLatestDataDate] = useState(null);
+            const [debug, setDebug] = useState(false);
+            const [debugLogs, setDebugLogs] = useState([]);
             
             const PROXY = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SHEET = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
@@ -343,6 +382,7 @@
 
             const load = async () => {
                 setLoading(true);
+                setDebugLogs([]);
                 try {
                     const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=Config!A:F&apiKey=${KEY}`);
                     const cfgJson = await cfgRes.json();
@@ -353,200 +393,3 @@
                     }));
 
                     const prefixes = [...new Set(clients.map(c => c.prefix))];
-                    const cache = {};
-                    let maxTs = 0;
-
-                    await Promise.all(prefixes.map(async prefix => {
-                        const fetchRange = async (suffix) => {
-                            try {
-                                const range = (prefix + ' ' + suffix).includes('FB') ? `${prefix} ${suffix}!A:H` : `${prefix} ${suffix}!A:F`;
-                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
-                                const json = await res.json();
-                                if (json.values) cache[`${prefix} ${suffix}`] = json.values;
-                            } catch(e) {}
-                        };
-                        const fetchConv = async () => {
-                            try {
-                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
-                                const json = await res.json();
-                                if (json.values) cache[`${prefix} Google Conversions`] = json.values;
-                            } catch(e) {}
-                        };
-                        await Promise.all([fetchRange('Google'), fetchRange('FB'), fetchConv()]);
-                    }));
-
-                    Object.values(cache).forEach(rows => {
-                        if (!rows || rows.length < 2) return;
-                        const h = rows[0];
-                        rows.slice(1).forEach(r => {
-                            const d = mapRow(h, r);
-                            if (d.Date && d.Date.getTime() > maxTs) maxTs = d.Date.getTime();
-                        });
-                    });
-                    
-                    if (maxTs > 0) setLatestDataDate(new Date(maxTs));
-
-                    const results = clients.map(client => {
-                        const currentRef = maxTs > 0 ? new Date(maxTs) : new Date();
-                        const getDatesLocal = (type, sel) => {
-                            const now = currentRef;
-                            if (sel === 'last30') {
-                                const end = now;
-                                const start = new Date(now); start.setDate(now.getDate() - 30);
-                                const prevEnd = new Date(start); prevEnd.setDate(start.getDate() - 1);
-                                const prevStart = new Date(prevEnd); prevStart.setDate(prevEnd.getDate() - 30);
-                                return { start, end, prevStart, prevEnd };
-                            }
-                            let y = now.getFullYear(), m = now.getMonth();
-                            if (sel !== 'current') {
-                                const parts = sel.split('-');
-                                y = parseInt(parts[0]); m = parseInt(parts[1]) - 1;
-                            }
-                            const make = (d) => new Date(y, m, d);
-                            const makePrev = (d) => new Date(y, m - 1, d);
-                            let cur = {};
-                            if (type === 'apollo') cur = (sel === 'current' && now.getDate() >= 26) ? { start: make(26), end: new Date(y, m+1, 25) } : { start: makePrev(26), end: make(25) };
-                            else if (type === 'brandon') cur = (sel === 'current' && now.getDate() >= 21) ? { start: make(21), end: new Date(y, m+1, 20) } : { start: makePrev(21), end: make(20) };
-                            else if (type === 'hc1') cur = (sel === 'current' && now.getDate() >= 11) ? { start: make(11), end: new Date(y, m+1, 10) } : { start: makePrev(11), end: make(10) };
-                            else cur = { start: new Date(y, m, 1), end: new Date(y, m+1, 0) };
-                            
-                            let prevEnd = new Date(cur.end); prevEnd.setMonth(prevEnd.getMonth() - 1);
-                            const prevStart = new Date(cur.start); prevStart.setMonth(prevStart.getMonth() - 1);
-                            if (sel === 'current') {
-                                const msPassed = now - cur.start;
-                                prevEnd = new Date(prevStart.getTime() + msPassed);
-                            }
-                            return { ...cur, prevStart, prevEnd };
-                        };
-
-                        const dates = getDatesLocal(client.type, month);
-                        const label = `${dates.start.toLocaleDateString('en-GB')} - ${dates.end.toLocaleDateString('en-GB')}`;
-                        
-                        let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
-                        let prev = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
-                        
-                        let gBudgets = new Map(), fBudgets = new Map();
-                        let maxDateG = 0, maxDateF = 0;
-
-                        const processTab = (tabName, isConv = false) => {
-                            const rows = cache[tabName];
-                            if (!rows) return;
-                            const h = rows[0];
-                            rows.slice(1).forEach(r => {
-                                const d = mapRow(h, r);
-                                if (!d.Date) return;
-                                
-                                const rowText = normalize(d.Campaign + ' ' + d.Adset);
-                                const match = client.camps.includes('*') || client.camps.some(c => rowText.includes(normalize(c)));
-                                if (!match) return;
-
-                                // REGIONAL LOGIC: "HC-One - England/Wales" MUST EXCLUDE Regional campaigns
-                                if (client.name.includes('England/Wales')) {
-                                    const regions = ['Midlands', 'North East', 'North West', 'Scotland', 'South', 'Yorkshire', 'Humber'];
-                                    if (regions.some(reg => rowText.includes(normalize(reg)))) return;
-                                }
-
-                                if (d.Date >= dates.start && d.Date <= dates.end) {
-                                    if (isConv) { stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; }
-                                    else {
-                                        stats.total += d.Cost;
-                                        if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
-                                        stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
-                                    }
-                                }
-
-                                if (d.Date >= dates.prevStart && d.Date <= dates.prevEnd) {
-                                    if (isConv) { prev.careApps += d.CareApps; prev.nurseApps += d.NurseApps; }
-                                    else {
-                                        prev.total += d.Cost;
-                                        if (d.CTR > 0) { prev.ctrSum += d.CTR; prev.ctrCount++; }
-                                        prev.careApps += d.CareApps; prev.nurseApps += d.NurseApps; prev.supportApps += d.SupportApps;
-                                    }
-                                }
-
-                                if (d.DailyBudget > 0 && !isConv) {
-                                    const t = d.Date.getTime();
-                                    if (tabName.includes('Google')) {
-                                        if (t > maxDateG) { maxDateG = t; gBudgets.clear(); }
-                                        if (t === maxDateG) gBudgets.set(normalize(d.Campaign)||'def', d.DailyBudget);
-                                    } else {
-                                        if (t > maxDateF) { maxDateF = t; fBudgets.clear(); }
-                                        if (t === maxDateF) fBudgets.set(normalize(d.Adset)||'def', d.DailyBudget);
-                                    }
-                                }
-                            });
-                        };
-
-                        processTab(`${client.prefix} Google`);
-                        processTab(`${client.prefix} FB`);
-                        processTab(`${client.prefix} Google Conversions`, true);
-
-                        let gDaily = 0, fDaily = 0;
-                        gBudgets.forEach(v => gDaily += v);
-                        fBudgets.forEach(v => fDaily += v);
-
-                        const today = currentRef;
-                        const daysTotal = Math.ceil((dates.end - dates.start) / 86400000);
-                        const passed = Math.max(1, Math.min(daysTotal, Math.ceil((today - dates.start) / 86400000)));
-                        const left = Math.max(0, daysTotal - passed);
-                        
-                        const avg = passed > 0 ? stats.total / passed : 0;
-                        const proj = stats.total + (avg * left);
-                        
-                        let status = 'ON TRACK';
-                        if (proj > client.budget * 1.05) status = 'HOT';
-                        else if (proj < client.budget * 0.95) status = 'COLD';
-                        if (stats.total >= client.budget) status = 'OVER BUDGET';
-
-                        return {
-                            ...client, ...stats, periodLabel: label, daysLeft: left, projected: proj, pctUsed: (stats.total/client.budget)*100, status,
-                            currentDailyBudget: gDaily + fDaily,
-                            googleDailyBudget: gDaily, facebookDailyBudget: fDaily,
-                            conversions: stats.careApps + stats.nurseApps + stats.supportApps,
-                            careConversions: stats.careApps, nursingConversions: stats.nurseApps, supportConversions: stats.supportApps,
-                            ctr: stats.ctrCount > 0 ? (stats.ctrSum / stats.ctrCount).toFixed(2) : 0,
-                            isHistorical: month !== 'current' && month !== 'last30',
-                            prev: {
-                                total: prev.total,
-                                conversions: prev.careApps + prev.nurseApps + prev.supportApps,
-                                careConversions: prev.careApps, nursingConversions: prev.nurseApps, supportConversions: prev.supportApps,
-                                ctr: prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount).toFixed(2) : 0
-                            }
-                        };
-                    });
-                    setData(results);
-                } catch(e) { console.error(e); }
-                setLoading(false);
-            };
-
-            useEffect(() => { load(); }, [month]);
-
-            const months = [
-                {value:'current', label:'Current Period'}, 
-                {value:'last30', label:'Last 30 Days'},
-                {value:'2025-11', label:'Nov 2025'}, 
-                {value:'2025-10', label:'Oct 2025'}
-            ];
-
-            return (
-                <div className="max-w-7xl mx-auto">
-                    <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                        <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Client Budgets</h1>
-                        <div className="flex gap-4">
-                            <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={months} />
-                            <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors shadow-sm">Refresh</button>
-                        </div>
-                    </div>
-                    {loading && <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
-                        {data.map(c => <ClientCard key={c.name} client={c} />)}
-                    </div>
-                </div>
-            );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<Dashboard />);
-    </script>
-</body>
-</html>
