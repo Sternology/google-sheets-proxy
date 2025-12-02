@@ -17,11 +17,6 @@
         .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
         .kpi-badge { position: relative; overflow: hidden; border: 1px solid #e5e7eb; }
         .kpi-badge::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: currentColor; opacity: 0.3; }
-        .trend-arrow { display: inline-block; transition: transform 0.2s ease; font-weight: bold; }
-        .trend-arrow.up { transform: translateY(-1px); }
-        .trend-arrow.down { transform: translateY(1px); }
-        .trend-up { background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(16, 185, 129, 0.1) 100%); }
-        .trend-down { background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(239, 68, 68, 0.1) 100%); }
     </style>
 </head>
 <body class="bg-gray-50 p-6">
@@ -35,10 +30,8 @@
         const parseSheetDate = (dateStr) => {
             if (!dateStr) return null;
             const cleanStr = String(dateStr).trim();
-            // Handle ISO (2025-01-01)
             const isoMatch = cleanStr.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
             if (isoMatch) return new Date(isoMatch[1], isoMatch[2] - 1, isoMatch[3]);
-            // Handle UK (01/01/2025)
             const ukMatch = cleanStr.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
             if (ukMatch) return new Date(ukMatch[3], ukMatch[2] - 1, ukMatch[1]);
             const d = new Date(cleanStr);
@@ -53,6 +46,42 @@
             return check >= start && check <= end;
         };
 
+        // --- DATA MAPPING ---
+
+        const mapRow = (headers, row) => {
+            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '' };
+            headers.forEach((h, i) => {
+                if (!h || !row[i]) return;
+                const val = row[i];
+                const header = h.trim().toLowerCase();
+                
+                if (header === 'date' || header === 'day') obj.Date = parseSheetDate(val);
+                else if (header.includes('adset name')) obj.Adset = val;
+                else {
+                    const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
+                    if (!isNaN(num)) {
+                        if (header === 'cost' || header.includes('amount spent')) obj.Cost = num;
+                        
+                        else if (header.includes('budget')) {
+                            // FB is in Pence (800 = £8.00), Google is in Pounds (29 = £29.00)
+                            if (header.includes('adset daily budget')) obj.DailyBudget = num / 100; 
+                            else obj.DailyBudget = num;
+                        }
+                        
+                        else if (header.includes('ctr')) obj.CTR = num;
+                        else if (header.includes('conversion') || header.includes('application')) {
+                            if (!header.includes('cost') && !header.includes('rate')) {
+                                if (header.includes('nurse')) obj.NurseApps = num;
+                                else if (header.includes('support')) obj.SupportApps = num;
+                                else obj.CareApps = num;
+                            }
+                        }
+                    }
+                }
+            });
+            return obj;
+        };
+
         // --- COMPONENTS ---
 
         const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
@@ -64,7 +93,7 @@
             </div>
         );
 
-        const KPIScorecard = ({ label, value, unit, icon, trend, performance, invertTrend }) => {
+        const KPIScorecard = ({ label, value, unit, icon, performance }) => {
             const getPerformanceColor = () => {
                 switch(performance) {
                     case 'excellent': return 'text-green-600 bg-green-50 border-green-200';
@@ -133,7 +162,6 @@
             let recGoogle = 0, recFB = 0;
             const totalCurrent = client.googleDailyBudget + client.facebookDailyBudget;
             
-            // Logic for Brandon Trust (FB Only) or Split
             if (client.name.includes('Brandon')) {
                 recFB = targetDaily;
             } else if (totalCurrent > 0) {
@@ -276,101 +304,95 @@
                 return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) };
             };
 
-            const mapRow = (headers, row) => {
-                const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '' };
-                headers.forEach((h, i) => {
-                    if (!h || !row[i]) return;
-                    const val = row[i];
-                    const header = h.trim().toLowerCase();
-                    
-                    if (header === 'date' || header === 'day') obj.Date = parseSheetDate(val);
-                    else if (header.includes('adset name')) obj.Adset = val;
-                    else {
-                        const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
-                        if (!isNaN(num)) {
-                            if (header === 'cost' || header.includes('amount spent')) obj.Cost = num;
-                            
-                            // BUDGET FIX: Detect if it's "Adset daily budget" (Meta) vs "Budget Amount" (Google)
-                            else if (header.includes('budget')) {
-                                if (header.includes('adset daily budget')) {
-                                    // Meta exports budget in pence/cents (e.g. 800 = £8.00)
-                                    obj.DailyBudget = num / 100;
-                                } else {
-                                    // Google exports budget in pounds (e.g. 29 = £29.00)
-                                    obj.DailyBudget = num;
-                                }
-                            }
-                            else if (header.includes('ctr')) obj.CTR = num;
-                            else if (header.includes('conversion') || header.includes('application')) {
-                                if (!header.includes('cost') && !header.includes('rate')) {
-                                    if (header.includes('nurse')) obj.NurseApps = num;
-                                    else if (header.includes('support')) obj.SupportApps = num;
-                                    else obj.CareApps = num;
-                                }
-                            }
-                        }
-                    }
-                });
-                return obj;
-            };
-
             const load = async () => {
                 setLoading(true);
                 try {
+                    // 1. Get Config and List of Clients
                     const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=Config!A:F&apiKey=${KEY}`);
                     const cfgJson = await cfgRes.json();
                     const clients = cfgJson.values.slice(1).map(r => ({
                         name: r[0], budget: parseFloat(r[1].replace(/,/g, '')), type: r[2], prefix: r[3] || r[0], skip: r[4] === 'TRUE', camps: r[5] ? r[5].split(',') : []
                     }));
 
-                    const results = await Promise.all(clients.map(async client => {
-                        const dates = getDates(client.type, month);
-                        const label = `${dates.start.toLocaleDateString()} - ${dates.end.toLocaleDateString()}`;
-                        let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
-                        
-                        let lastGoogleBudget = 0;
-                        let lastFBBudgets = new Map();
+                    // 2. Identify Unique Tabs Needed (Shared Cache Strategy)
+                    const prefixes = new Set(clients.map(c => c.prefix));
+                    const rawData = {}; 
 
+                    // 3. Fetch All Required Data Once
+                    await Promise.all(Array.from(prefixes).map(async prefix => {
                         const fetchTab = async (suffix) => {
                             try {
-                                const range = (client.prefix + ' ' + suffix).includes('FB') ? `${client.prefix} ${suffix}!A:H` : `${client.prefix} ${suffix}!A:F`;
+                                const range = (prefix + ' ' + suffix).includes('FB') ? `${prefix} ${suffix}!A:H` : `${prefix} ${suffix}!A:F`;
                                 const res = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
                                 const json = await res.json();
                                 if (json.values) {
                                     const h = json.values[0];
-                                    const rows = json.values.slice(1).map(r => mapRow(h, r)).filter(d => d.Date);
-                                    rows.sort((a, b) => a.Date - b.Date);
-
-                                    rows.forEach(d => {
-                                        if (d.Date >= dates.start && d.Date <= dates.end) {
-                                            stats.total += d.Cost;
-                                            if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
-                                            stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
-                                        }
-                                        if (d.DailyBudget > 0) {
-                                            if (suffix === 'Google') lastGoogleBudget = d.DailyBudget; 
-                                            if (suffix === 'FB') lastFBBudgets.set(d.Adset, d.DailyBudget);
-                                        }
-                                    });
+                                    rawData[`${prefix} ${suffix}`] = json.values.slice(1).map(r => mapRow(h, r)).filter(d => d.Date);
+                                }
+                            } catch(e) {}
+                        };
+                        const fetchConv = async () => {
+                            try {
+                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=${encodeURIComponent(prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
+                                const json = await res.json();
+                                if (json.values) {
+                                    const h = json.values[0];
+                                    rawData[`${prefix} Google Conversions`] = json.values.slice(1).map(r => mapRow(h, r));
                                 }
                             } catch(e) {}
                         };
 
-                        if (!client.skip) { await fetchTab('Google'); await fetchTab('FB'); }
-                        
-                        try {
-                            const convRes = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=${encodeURIComponent(client.prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
-                            const convJson = await convRes.json();
-                            if (convJson.values) {
-                                const h = convJson.values[0];
-                                convJson.values.slice(1).forEach(r => {
-                                    const d = mapRow(h, r);
-                                    if (d.Date && d.Date >= dates.start && d.Date <= dates.end) {
+                        await Promise.all([fetchTab('Google'), fetchTab('FB'), fetchConv()]);
+                    }));
+
+                    // 4. Process Each Client using Shared Data
+                    const results = clients.map(client => {
+                        const dates = getDates(client.type, month);
+                        const label = `${dates.start.toLocaleDateString()} - ${dates.end.toLocaleDateString()}`;
+                        let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
+                        let lastGoogleBudget = 0;
+                        let lastFBBudgets = new Map();
+
+                        // Helper to process a tab from cache
+                        const processCachedTab = (tabName, isConv = false) => {
+                            const rows = rawData[tabName] || [];
+                            // Sort for budget logic
+                            rows.sort((a, b) => a.Date - b.Date);
+
+                            rows.forEach(d => {
+                                // Date Filter
+                                if (d.Date >= dates.start && d.Date <= dates.end) {
+                                    if (!isConv) {
+                                        // Filter by Campaign Name
+                                        const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign || '').trim() === c.trim()) || client.camps.some(c => (d.Adset || '').trim() === c.trim()); // Loose matching
+                                        
+                                        if (match) {
+                                            stats.total += d.Cost;
+                                            if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
+                                            stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
+                                        }
+                                    } else {
+                                        // Conversions Tab
                                         stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps;
                                     }
-                                });
-                            }
-                        } catch(e) {}
+                                }
+                                
+                                // Capture Latest Budget (Regardless of date range, usually)
+                                // But strictly, we should capture the latest budget *within* the range or just the absolute latest?
+                                // The previous "working" logic took the absolute latest in the file. Let's stick to valid dates to be safe.
+                                if (d.DailyBudget > 0) {
+                                    const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign || '').trim() === c.trim()) || client.camps.some(c => (d.Adset || '').trim() === c.trim());
+                                    if (match) {
+                                        if (tabName.includes('Google')) lastGoogleBudget = d.DailyBudget;
+                                        if (tabName.includes('FB')) lastFBBudgets.set(d.Adset, d.DailyBudget);
+                                    }
+                                }
+                            });
+                        };
+
+                        processCachedTab(`${client.prefix} Google`);
+                        processCachedTab(`${client.prefix} FB`);
+                        processCachedTab(`${client.prefix} Google Conversions`, true);
 
                         let fbDailyTotal = 0;
                         lastFBBudgets.forEach(v => fbDailyTotal += v);
@@ -400,7 +422,8 @@
                             ctr: stats.ctrCount > 0 ? stats.ctrSum / stats.ctrCount : 0,
                             isHistorical: month !== 'current'
                         };
-                    }));
+                    });
+
                     setData(results);
                 } catch (e) { console.error(e); }
                 setLoading(false);
