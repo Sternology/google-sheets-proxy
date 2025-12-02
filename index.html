@@ -3,42 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Client Budget Performance Dashboard</title>
+    <title>Client Budget Dashboard</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif; }
-        .gauge-chart { position: relative; width: 120px; height: 120px; }
-        .gauge-svg { transform: rotate(-90deg); }
-        .gauge-bg { fill: none; stroke: #f3f4f6; stroke-width: 15; }
-        .gauge-fill { fill: none; stroke-width: 15; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
-        .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
-        .collapsible-content { overflow: hidden; transition: max-height 0.3s ease-out, opacity 0.3s ease-out; }
-        .collapsible-content.collapsed { max-height: 0; opacity: 0; }
-        .collapsible-content.expanded { max-height: 800px; opacity: 1; }
-        .chevron { transition: transform 0.3s ease; }
-        .chevron.rotated { transform: rotate(180deg); }
-        .kpi-badge { position: relative; overflow: hidden; }
-        .kpi-badge::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: currentColor; opacity: 0.3; }
-        @keyframes pulseGreen { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-        @keyframes pulseRed { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-        .trend-positive { animation: pulseGreen 2s infinite; }
-        .trend-negative { animation: pulseRed 2s infinite; }
-        .trend-arrow { display: inline-block; transition: transform 0.2s ease; font-weight: bold; }
-        .trend-arrow.up { transform: translateY(-1px); }
-        .trend-arrow.down { transform: translateY(1px); }
-        .kpi-badge.trend-up { background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(16, 185, 129, 0.1) 100%); }
-        .kpi-badge.trend-down { background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(239, 68, 68, 0.1) 100%); }
-        .historical-badge { background: linear-gradient(135deg, rgba(156, 163, 175, 0.1) 0%, rgba(156, 163, 175, 0.2) 100%); border: 2px solid rgba(156, 163, 175, 0.3); }
-        .hit-target { background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.2) 100%); border-color: rgba(16, 185, 129, 0.4); }
-        .missed-target { background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.2) 100%); border-color: rgba(239, 68, 68, 0.4); }
-    </style>
 </head>
-<body>
+<body class="bg-gray-50">
     <div id="root"></div>
-
     <script type="text/babel" src="./dashboard.js"></script>
 </body>
 </html>
