@@ -9,11 +9,8 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
-        .gauge-bg { fill: none; stroke: #e2e8f0; stroke-width: 12; }
-        .gauge-fill { fill: none; stroke-width: 12; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease; }
-        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        body { background-color: #f8fafc; font-family: -apple-system, system-ui, sans-serif; }
+        .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
     </style>
 </head>
 <body class="p-6">
@@ -22,59 +19,51 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
 
-        // --- 1. ROBUST HELPERS ---
-
-        const formatMoney = (amount) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(amount);
-        const formatNumber = (num) => new Intl.NumberFormat('en-GB').format(num);
+        // --- HELPERS ---
+        const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
+        const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val);
 
         const parseSheetDate = (dateStr) => {
             if (!dateStr) return null;
             const s = String(dateStr).trim();
-            // ISO (2025-01-01) - Standard in your new files
+            // ISO (2025-01-01) - Standard in your file
             const iso = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
             if (iso) return new Date(iso[1], iso[2] - 1, iso[3]);
-            // UK (01/01/2025) - Fallback
+            // UK (01/01/2025)
             const uk = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
             if (uk) return new Date(uk[3], uk[2] - 1, uk[1]);
             const d = new Date(s);
             return isNaN(d.getTime()) ? null : d;
         };
 
-        // --- 2. SMART DATA MAPPER ---
         const mapRow = (headers, row) => {
             const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '' };
-            
             headers.forEach((h, i) => {
                 if (!h || !row[i]) return;
                 const header = h.trim();
-                const headerLower = header.toLowerCase();
+                const lower = header.toLowerCase();
                 const val = row[i];
 
-                // Date
-                if (headerLower === 'date' || headerLower === 'day') obj.Date = parseSheetDate(val);
-                // Adset Name (for deduplication)
-                else if (headerLower.includes('adset name')) obj.Adset = val;
+                if (lower === 'date' || lower === 'day') obj.Date = parseSheetDate(val);
+                else if (lower.includes('adset name')) obj.Adset = val;
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
                         // SPEND
-                        if (header === 'Amount spent (GBP)' || header === 'Cost' || header === 'Amount spent') obj.Cost = num;
-                        
-                        // BUDGET (Handle Pence vs Pounds)
-                        else if (header.includes('budget')) {
-                            if (header === 'Adset daily budget') obj.DailyBudget = num / 100; // Fix: 800p -> £8.00
-                            else if (header === 'Budget Amount') obj.DailyBudget = num;       // Fix: £29 -> £29.00
+                        if (lower === 'amount spent (gbp)' || lower === 'cost' || lower === 'amount spent') obj.Cost = num;
+                        // BUDGET (Fixing the Pence vs Pounds issue)
+                        else if (lower.includes('budget')) {
+                            if (lower === 'adset daily budget') obj.DailyBudget = num / 100; // FB (Pence)
+                            else if (lower === 'budget amount') obj.DailyBudget = num;       // Google (Pounds)
                         }
-                        
                         // CTR
-                        else if (headerLower.includes('ctr')) obj.CTR = num;
-                        
+                        else if (lower.includes('ctr')) obj.CTR = num;
                         // CONVERSIONS
-                        else if (headerLower.includes('conversion') || headerLower.includes('application')) {
-                            if (!headerLower.includes('cost') && !headerLower.includes('rate')) {
-                                if (headerLower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
+                        else if (lower.includes('conversion') || lower.includes('application')) {
+                            if (!lower.includes('cost') && !lower.includes('rate')) {
+                                if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                 else if (header.includes('Support Worker')) obj.SupportApps = num;
-                                else if (header.includes('Care') || headerLower.includes('care')) obj.CareApps = num;
+                                else if (header.includes('Care') || lower.includes('care')) obj.CareApps = num;
                             }
                         }
                     }
@@ -83,29 +72,27 @@
             return obj;
         };
 
-        // --- 3. VISUAL COMPONENTS ---
+        // --- COMPONENTS ---
 
-        const Card = ({ children }) => <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 animate-fade-in">{children}</div>;
-
-        // RESTORED COMPONENT
         const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
             <div className="flex items-center gap-3">
                 <label className="text-sm font-medium text-gray-700">View Period:</label>
-                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="px-4 py-2 border rounded-lg text-sm bg-white">
+                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="px-4 py-2 border rounded-lg text-sm bg-white shadow-sm">
                     {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label} {m.isCurrent ? '(Current)' : ''}</option>)}
                 </select>
             </div>
         );
 
-        const KPICard = ({ label, value, icon, color = "blue" }) => {
+        const KPICard = ({ label, value, icon, color }) => {
             const theme = {
-                green: "bg-emerald-50 text-emerald-700 border-emerald-100",
-                blue: "bg-blue-50 text-blue-700 border-blue-100",
-                orange: "bg-orange-50 text-orange-700 border-orange-100"
-            }[color];
+                green: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                blue: "bg-blue-50 text-blue-700 border-blue-200",
+                orange: "bg-orange-50 text-orange-700 border-orange-200"
+            }[color] || "bg-gray-50 text-gray-700";
+            
             return (
-                <div className={`p-3 rounded-lg border ${theme}`}>
-                    <div className="flex items-center gap-2 mb-1 opacity-80">
+                <div className={`p-4 rounded-xl border ${theme} flex flex-col justify-center`}>
+                    <div className="flex items-center gap-2 mb-1 opacity-90">
                         <span className="text-xl">{icon}</span>
                         <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
                     </div>
@@ -118,15 +105,15 @@
             const r = 40, c = 2 * Math.PI * r;
             const off = c - (Math.min(pct, 100) / 100) * c;
             return (
-                <div className="flex flex-col items-center justify-center">
+                <div className="flex flex-col items-center justify-center relative">
                     <div className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</div>
-                    <div className="relative w-24 h-24">
-                        <svg className="w-full h-full -rotate-90">
-                            <circle cx="48" cy="48" r={r} stroke="#f1f5f9" strokeWidth="8" fill="none" />
-                            <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
-                                style={{ strokeDasharray: c, strokeDashoffset: off }} className="transition-all duration-700" />
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center font-bold text-gray-700">{sub}</div>
+                    <svg width="96" height="96" className="-rotate-90">
+                        <circle cx="48" cy="48" r={r} stroke="#f1f5f9" strokeWidth="8" fill="none" />
+                        <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
+                            style={{ strokeDasharray: c, strokeDashoffset: off }} className="gauge-fill" />
+                    </svg>
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pt-4 font-bold text-gray-700">
+                        {sub}
                     </div>
                 </div>
             );
@@ -137,9 +124,9 @@
                 const diff = client.budget - client.total;
                 const under = diff >= 0;
                 return (
-                    <div className={`mt-4 p-4 rounded-lg border flex justify-between ${under ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                    <div className={`mt-4 p-4 rounded-xl border flex justify-between items-center ${under ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
                         <span className="font-bold">{under ? 'Under Budget' : 'Over Budget'}</span>
-                        <span className="font-mono font-bold">{under ? '-' : '+'}{formatMoney(Math.abs(diff))}</span>
+                        <span className="font-mono font-bold text-lg">{under ? '-' : '+'}{formatMoney(Math.abs(diff))}</span>
                     </div>
                 );
             }
@@ -149,33 +136,31 @@
             const current = client.currentDailyBudget;
             const change = target - current;
             
-            // Logic
             let status = 'normal';
             if (client.total >= client.budget) status = 'critical';
             else if (Math.abs(change) < 3) status = 'optimal';
             else if (change > 0) status = 'increase';
             else status = 'decrease';
 
-            const colors = {
-                critical: "bg-red-100 border-red-300 text-red-900",
-                increase: "bg-blue-50 border-blue-200 text-blue-900",
-                decrease: "bg-orange-50 border-orange-200 text-orange-900",
+            const style = {
+                critical: "bg-red-50 border-red-200 text-red-900",
+                increase: "bg-indigo-50 border-indigo-200 text-indigo-900",
+                decrease: "bg-amber-50 border-amber-200 text-amber-900",
                 optimal: "bg-emerald-50 border-emerald-200 text-emerald-900",
                 normal: "bg-gray-50 border-gray-200 text-gray-900"
             }[status];
 
             const msg = {
-                critical: "Budget Exhausted - Pause",
-                increase: "Increase Spend",
-                decrease: "Decrease Spend",
+                critical: "Budget Exhausted",
+                increase: "Increase Daily Spend",
+                decrease: "Reduce Daily Spend",
                 optimal: "Spend is Optimal",
                 normal: "Adjust Spend"
             }[status];
 
-            // Split
+            // Split Logic
             let gRec = 0, fRec = 0;
             const totalCur = client.googleDailyBudget + client.facebookDailyBudget;
-            
             if (client.name.includes('Brandon')) { fRec = target; }
             else if (totalCur > 0) {
                 const ratio = client.googleDailyBudget / totalCur;
@@ -183,23 +168,25 @@
             } else { gRec = target / 2; fRec = target / 2; }
 
             return (
-                <div className={`mt-4 p-4 rounded-lg border ${colors}`}>
-                    <div className="flex items-center gap-2 mb-3 border-b border-black/10 pb-2">
-                        <span className="text-xl">{status === 'critical' ? '🚨' : status === 'optimal' ? '✅' : '⚙️'}</span>
-                        <div><div className="text-xs uppercase opacity-70 font-bold">Action</div><div className="font-bold">{msg}</div></div>
+                <div className={`mt-6 p-5 rounded-xl border ${style}`}>
+                    <div className="flex items-center gap-3 mb-4 pb-3 border-b border-black/5">
+                        <span className="text-2xl">{status === 'critical' ? '🚨' : status === 'optimal' ? '✅' : '⚙️'}</span>
+                        <div><div className="text-xs uppercase opacity-60 font-bold tracking-wide">Recommendation</div><div className="font-bold">{msg}</div></div>
                     </div>
                     {status !== 'optimal' && status !== 'critical' && (
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="grid grid-cols-2 gap-6 text-sm">
                             <div>
-                                <div className="text-xs uppercase opacity-60 mb-1">Daily Target</div>
-                                <div className="flex justify-between"><span>Now</span><strong>{formatMoney(current)}</strong></div>
-                                <div className="flex justify-between"><span>Aim</span><strong>{formatMoney(target)}</strong></div>
-                                <div className="flex justify-between border-t border-black/10 mt-1 pt-1 font-bold"><span>Diff</span><span>{change > 0 ? '+' : ''}{formatMoney(change)}</span></div>
+                                <div className="text-xs uppercase opacity-60 mb-1 font-semibold">Daily Target</div>
+                                <div className="flex justify-between mb-1"><span>Current</span><span className="font-mono">{formatMoney(current)}</span></div>
+                                <div className="flex justify-between font-bold"><span>Target</span><span className="font-mono">{formatMoney(target)}</span></div>
+                                <div className="mt-2 pt-2 border-t border-black/5 flex justify-between font-bold text-xs">
+                                    <span>Change</span><span>{change > 0 ? '+' : ''}{formatMoney(change)}</span>
+                                </div>
                             </div>
                             <div>
-                                <div className="text-xs uppercase opacity-60 mb-1">Split</div>
-                                {gRec > 0 && <div className="flex justify-between"><span>Google</span><span>{formatMoney(gRec)}</span></div>}
-                                {fRec > 0 && <div className="flex justify-between"><span>Meta</span><span>{formatMoney(fRec)}</span></div>}
+                                <div className="text-xs uppercase opacity-60 mb-1 font-semibold">Platform Split</div>
+                                {gRec > 0 && <div className="flex justify-between mb-1"><span>Google</span><span className="font-mono">{formatMoney(gRec)}</span></div>}
+                                {fRec > 0 && <div className="flex justify-between"><span>Meta</span><span className="font-mono">{formatMoney(fRec)}</span></div>}
                             </div>
                         </div>
                     )}
@@ -218,7 +205,7 @@
             const cpa = kpi.val > 0 ? client.total / kpi.val : 0;
 
             return (
-                <Card>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
                     <div className="flex justify-between items-start mb-6">
                         <div>
                             <h3 className="font-bold text-lg text-gray-900">{client.name}</h3>
@@ -232,7 +219,7 @@
 
                     <div className="grid grid-cols-3 gap-2 mb-6">
                         <Gauge pct={client.pctUsed} label="Budget" sub={`${client.pctUsed.toFixed(0)}%`} color={client.pctUsed > 100 ? '#ef4444' : '#10b981'} />
-                        <div className="flex flex-col items-center justify-center p-2 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex flex-col items-center justify-center p-2 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="text-xs font-bold text-gray-400 uppercase mb-2">Pace</div>
                             <div className="text-3xl">{client.status === 'HOT' ? '🔥' : client.status === 'COLD' ? '🧊' : '✅'}</div>
                         </div>
@@ -247,24 +234,24 @@
 
                     <BudgetAction client={client} />
 
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                        <button onClick={() => setOpen(!open)} className="w-full flex justify-between text-sm text-gray-500 hover:text-gray-900">
+                    <div className="mt-auto pt-4 border-t border-gray-100">
+                        <button onClick={() => setOpen(!open)} className="w-full flex justify-between text-xs font-bold uppercase text-gray-400 hover:text-gray-600 tracking-wider">
                             <span>Details</span><span>{open ? 'Hide' : 'Show'}</span>
                         </button>
                         {open && (
-                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-3 rounded">
-                                <div className="flex justify-between"><span>Spend</span><strong>{formatMoney(client.total)}</strong></div>
+                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                <div className="flex justify-between"><span>Spent</span><strong>{formatMoney(client.total)}</strong></div>
                                 <div className="flex justify-between"><span>Budget</span><strong>{formatMoney(client.budget)}</strong></div>
-                                <div className="flex justify-between"><span>Current Daily</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
+                                <div className="flex justify-between"><span>Daily (Actual)</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
                                 <div className="flex justify-between"><span>Days Left</span><strong>{client.daysLeft}</strong></div>
                             </div>
                         )}
                     </div>
-                </Card>
+                </div>
             );
         };
 
-        // --- 4. MAIN CONTROLLER ---
+        // --- MAIN APP ---
 
         const Dashboard = () => {
             const [data, setData] = useState([]);
@@ -294,14 +281,12 @@
             const load = async () => {
                 setLoading(true);
                 try {
-                    // 1. Get Config
                     const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=Config!A:F&apiKey=${KEY}`);
                     const cfgJson = await cfgRes.json();
                     const clients = cfgJson.values.slice(1).map(r => ({
                         name: r[0], budget: parseFloat(r[1].replace(/,/g, '')), type: r[2], prefix: r[3] || r[0], skip: r[4] === 'TRUE', camps: r[5] ? r[5].split(',') : []
                     }));
 
-                    // 2. Fetch Unique Tabs (Shared Cache)
                     const prefixes = [...new Set(clients.map(c => c.prefix))];
                     const cache = {};
 
@@ -324,15 +309,13 @@
                         await Promise.all([fetchRange('Google'), fetchRange('FB'), fetchConv()]);
                     }));
 
-                    // 3. Process Clients using Cache
                     const results = clients.map(client => {
                         const dates = getDates(client.type, month);
                         const label = `${dates.start.toLocaleDateString('en-GB')} - ${dates.end.toLocaleDateString('en-GB')}`;
                         let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
                         
-                        // Budget Tracking (Latest Date Strategy)
-                        let gBudgets = new Map(), fBudgets = new Map();
                         let maxDateG = 0, maxDateF = 0;
+                        let gBudgets = new Map(), fBudgets = new Map();
 
                         const processTab = (tabName, isConv = false) => {
                             const rows = cache[tabName];
@@ -342,7 +325,6 @@
                                 const d = mapRow(h, r);
                                 if (!d.Date) return;
                                 
-                                // Aggregation (Spend/Conv)
                                 if (d.Date >= dates.start && d.Date <= dates.end) {
                                     if (isConv) {
                                         stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps;
@@ -356,17 +338,16 @@
                                     }
                                 }
 
-                                // Budget Logic (Find latest available data)
                                 if (d.DailyBudget > 0 && !isConv) {
                                     const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign||d.Adset||'').includes(c.trim()));
                                     if (match) {
-                                        const time = d.Date.getTime();
+                                        const t = d.Date.getTime();
                                         if (tabName.includes('Google')) {
-                                            if (time > maxDateG) { maxDateG = time; gBudgets.clear(); }
-                                            if (time === maxDateG) gBudgets.set(d.Campaign || 'default', d.DailyBudget);
+                                            if (t > maxDateG) { maxDateG = t; gBudgets.clear(); }
+                                            if (t === maxDateG) gBudgets.set(d.Campaign||'def', d.DailyBudget);
                                         } else {
-                                            if (time > maxDateF) { maxDateF = time; fBudgets.clear(); }
-                                            if (time === maxDateF) fBudgets.set(d.Adset || 'default', d.DailyBudget);
+                                            if (t > maxDateF) { maxDateF = t; fBudgets.clear(); }
+                                            if (t === maxDateF) fBudgets.set(d.Adset||'def', d.DailyBudget);
                                         }
                                     }
                                 }
@@ -377,10 +358,9 @@
                         processTab(`${client.prefix} FB`);
                         processTab(`${client.prefix} Google Conversions`, true);
 
-                        // Sum latest budgets
-                        let dailyG = 0, dailyF = 0;
-                        gBudgets.forEach(v => dailyG += v);
-                        fBudgets.forEach(v => dailyF += v);
+                        let gDaily = 0, fDaily = 0;
+                        gBudgets.forEach(v => gDaily += v);
+                        fBudgets.forEach(v => fDaily += v);
 
                         const today = new Date();
                         const daysTotal = Math.ceil((dates.end - dates.start) / 86400000);
@@ -397,8 +377,8 @@
 
                         return {
                             ...client, ...stats, periodLabel: label, daysLeft: left, projected: proj, pctUsed: (stats.total/client.budget)*100, status,
-                            currentDailyBudget: dailyG + dailyF,
-                            googleDailyBudget: dailyG, facebookDailyBudget: dailyF,
+                            currentDailyBudget: gDaily + fDaily,
+                            googleDailyBudget: gDaily, facebookDailyBudget: fDaily,
                             conversions: stats.careApps + stats.nurseApps + stats.supportApps,
                             careConversions: stats.careApps, nursingConversions: stats.nurseApps, supportConversions: stats.supportApps,
                             ctr: stats.ctrCount > 0 ? (stats.ctrSum / stats.ctrCount).toFixed(2) : 0,
@@ -414,19 +394,17 @@
 
             return (
                 <div className="max-w-7xl mx-auto">
-                    <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-                        <h1 className="text-3xl font-bold text-gray-800">Client Budgets</h1>
+                    <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+                        <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Client Budgets</h1>
                         <div className="flex gap-4">
                             <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={[
                                 {value:'current', label:'Current'}, {value:'2025-11', label:'Nov 2025'}, {value:'2025-10', label:'Oct 2025'}
                             ]} />
-                            <button onClick={load} className="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800">Refresh</button>
+                            <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors">Refresh</button>
                         </div>
                     </div>
-                    
-                    {loading && <div className="text-center py-12 text-gray-500">Loading...</div>}
-                    
-                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {loading && <div className="text-center py-20 text-gray-400 animate-pulse">Loading data...</div>}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
                         {data.map(c => <ClientCard key={c.name} client={c} />)}
                     </div>
                 </div>
