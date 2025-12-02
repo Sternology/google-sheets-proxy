@@ -100,17 +100,15 @@
             return obj;
         };
 
-        // --- NEW COMPONENT: TREND CHART ---
+        // --- TREND CHART ---
         const TrendChart = ({ dailyData }) => {
             const [expanded, setExpanded] = useState(false);
             if (!dailyData || dailyData.length < 2) return null;
 
-            // Sort data by date
             const data = [...dailyData].sort((a,b) => a.date - b.date);
             const width = 100;
             const height = 40;
 
-            // Normalization helper: Scales any metric to 0-100 range for the graph
             const getPath = (key) => {
                 const vals = data.map(d => d[key] || 0);
                 const min = Math.min(...vals);
@@ -137,12 +135,10 @@
                     <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'}`}>
                         <div className="bg-gray-50 rounded-lg p-3 mt-1 relative">
                             <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-20 overflow-visible">
-                                {/* Grid Lines */}
                                 <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" />
                                 <line x1="0" y1="20" x2="100" y2="20" stroke="#e5e7eb" strokeWidth="0.5" />
                                 <line x1="0" y1="40" x2="100" y2="40" stroke="#e5e7eb" strokeWidth="0.5" />
 
-                                {/* Trends */}
                                 <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.1s'}} />
                                 <polyline points={getPath('cpa')} fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.3s'}} />
                                 <polyline points={getPath('ctr')} fill="none" stroke="#f97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.5s'}} />
@@ -370,6 +366,7 @@
         };
 
         const ClientCard = ({ client }) => {
+            const [open, setOpen] = useState(false);
             
             let kpi = { lbl: 'Conversions', val: client.conversions, icon: '🎯', prev: client.prev.conversions };
             if (client.name.includes('Nursing')) kpi = { lbl: 'Nurse Apps', val: client.nursingConversions, icon: '👩‍⚕️', prev: client.prev.nursingConversions };
@@ -419,12 +416,26 @@
                     <div className="grid grid-cols-3 gap-3">
                         <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
                         <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
-                        <KPICard label="CTR" value={`${client.ctr}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr}%` : null} details={{ google: `${gCtr.toFixed(2)}%`, facebook: `${fCtr.toFixed(2)}%` }} />
+                        <KPICard label="CTR" value={`${client.ctr.toFixed(0)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(0)}%` : null} details={{ google: `${(gCtr*100).toFixed(0)}%`, facebook: `${(fCtr*100).toFixed(0)}%` }} />
                     </div>
                     
                     <TrendChart dailyData={client.dailyData} />
 
                     <BudgetAction client={client} />
+
+                    <div className="mt-auto pt-4 border-t border-gray-100">
+                        <button onClick={() => setOpen(!open)} className="w-full flex justify-between text-xs font-bold uppercase text-gray-400 hover:text-gray-600 tracking-wider">
+                            <span>Details</span><span>{open ? 'Hide' : 'Show'}</span>
+                        </button>
+                        {open && (
+                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl border border-gray-100 animate-fade-in">
+                                <div className="flex justify-between"><span>Spent</span><strong>{formatMoney(client.total)}</strong></div>
+                                <div className="flex justify-between"><span>Budget</span><strong>{formatMoney(client.budget)}</strong></div>
+                                <div className="flex justify-between"><span>Daily (Actual)</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
+                                <div className="flex justify-between"><span>Days Left</span><strong>{client.daysLeft}</strong></div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             );
         };
@@ -531,7 +542,6 @@
                         let gBudgets = new Map(), fBudgets = new Map();
                         let maxDateG = 0, maxDateF = 0;
                         
-                        // New Daily Stats Map
                         const dailyMap = new Map();
 
                         const processTab = (tabName, isConv = false) => {
@@ -552,9 +562,8 @@
                                 }
 
                                 const inCurrent = d.Date >= dates.start && d.Date <= dates.end;
-                                
+
                                 if (inCurrent) {
-                                    // LOGIC FOR DEBUG
                                     if (d.Cost > 0 || d.CareApps > 0 || d.NurseApps > 0 || d.RawCare > 0) {
                                         tempLogs.push({
                                             client: client.name, tab: tabName, date: d.Date.toLocaleDateString('en-GB'),
@@ -563,7 +572,6 @@
                                         });
                                     }
 
-                                    // DAILY DATA COLLECTION
                                     const dateKey = d.Date.toISOString().split('T')[0];
                                     if (!dailyMap.has(dateKey)) dailyMap.set(dateKey, { date: d.Date, cost:0, conv:0, ctrSum:0, ctrCount:0 });
                                     const day = dailyMap.get(dateKey);
@@ -571,7 +579,6 @@
                                     if (isConv) {
                                         const c = d.CareApps + d.NurseApps;
                                         day.conv += c;
-                                        
                                         const target = tabName.includes('Google') ? g : f;
                                         target.care += d.CareApps; target.nurse += d.NurseApps;
                                     } else {
@@ -613,7 +620,6 @@
                         processTab(`${client.prefix} FB`);
                         processTab(`${client.prefix} Google Conversions`, true);
 
-                        // Finalize Daily Data Array
                         const dailyData = Array.from(dailyMap.values()).map(d => ({
                             date: d.date,
                             conv: d.conv,
@@ -687,7 +693,7 @@
             return (
                 <div className="max-w-7xl mx-auto">
                     <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                        <h1 className="text-3xl font-bold text-white tracking-tight">Client Budgets</h1>
+                        <h1 className="text-3xl font-bold text-gray-800 tracking-tight text-white">Client Budgets</h1>
                         <div className="flex gap-4">
                             <button onClick={() => setDebug(!debug)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${debug ? 'bg-red-600 text-white border-red-600' : 'bg-slate-800 text-gray-300 border-slate-700 hover:bg-slate-700'}`}>
                                 {debug ? 'Debug ON' : 'Debug OFF'}
