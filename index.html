@@ -23,12 +23,12 @@
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val);
 
-        // Normalize: Lowercase, fix dashes, BUT KEEP PIPES for strict matching
         const normalize = (text) => {
             if (!text) return '';
             return text.toLowerCase()
                 .replace(/–/g, '-')
                 .replace(/—/g, '-')
+                .replace(/\|/g, '')
                 .replace(/\s+/g, ' ')
                 .trim();
         };
@@ -58,24 +58,18 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
-                        // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
-                            // Safety: If spend > 500, assume pence -> pounds (unless it's Google)
                             if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
-                        // BUDGET
                         else if (lower.includes('budget')) {
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
-                        // CTR
                         else if (lower.includes('ctr')) obj.CTR = num;
-                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                // ANTI-INFLATION: If a single row has > 10 apps, it's likely a Value/Credit, not a Count. Ignore it.
-                                if (num < 10) {
+                                if (num < 20) {
                                     if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                     else if (header.includes('Support Worker')) obj.SupportApps = num;
                                     else if (header.includes('Care') || lower.includes('care')) obj.CareApps = num;
@@ -226,7 +220,7 @@
             );
         };
 
-        const ClientCard = ({ client, debug }) => {
+        const ClientCard = ({ client }) => {
             const [open, setOpen] = useState(false);
             
             let kpi = { lbl: 'Conversions', val: client.conversions, icon: '🎯', prev: client.prev.conversions };
@@ -281,14 +275,6 @@
                                 <div className="flex justify-between"><span>Budget</span><strong>{formatMoney(client.budget)}</strong></div>
                                 <div className="flex justify-between"><span>Daily (Actual)</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
                                 <div className="flex justify-between"><span>Days Left</span><strong>{client.daysLeft}</strong></div>
-                                {debug && client.matchedCampaigns && (
-                                    <div className="mt-4 pt-2 border-t border-gray-200">
-                                        <div className="font-bold mb-1">Matched Campaigns (Debug):</div>
-                                        <div className="max-h-32 overflow-y-auto text-xs font-mono bg-gray-100 p-2 rounded">
-                                            {[...client.matchedCampaigns].map((c, i) => <div key={i}>{c}</div>)}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         )}
                     </div>
@@ -300,17 +286,19 @@
             const [data, setData] = useState([]);
             const [loading, setLoading] = useState(false);
             const [month, setMonth] = useState('current');
-            const [debug, setDebug] = useState(false);
+            const [latestDataDate, setLatestDataDate] = useState(null);
             
             const PROXY = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SHEET = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
 
             const getDates = (type, sel) => {
-                const now = new Date();
+                // IMPORTANT: Use the latest date from the file as "Today", or fallback to real today
+                const now = latestDataDate ? new Date(latestDataDate) : new Date();
+                
                 if (sel === 'last30') {
                     const end = now;
-                    const start = new Date(); start.setDate(now.getDate() - 30);
+                    const start = new Date(now); start.setDate(now.getDate() - 30);
                     const prevEnd = new Date(start); prevEnd.setDate(start.getDate() - 1);
                     const prevStart = new Date(prevEnd); prevStart.setDate(prevEnd.getDate() - 30);
                     return { start, end, prevStart, prevEnd };
@@ -330,7 +318,7 @@
                 else if (type === 'hc1') cur = (sel === 'current' && now.getDate() >= 11) ? { start: make(11), end: new Date(y, m+1, 10) } : { start: makePrev(11), end: make(10) };
                 else cur = { start: new Date(y, m, 1), end: new Date(y, m+1, 0) };
 
-                // Pro-Rata Comparison for Current Month
+                // Calculate Pro-Rata Comparison
                 let prevEnd = new Date(cur.end); prevEnd.setMonth(prevEnd.getMonth() - 1);
                 const prevStart = new Date(cur.start); prevStart.setMonth(prevStart.getMonth() - 1);
                 
@@ -355,6 +343,7 @@
 
                     const prefixes = [...new Set(clients.map(c => c.prefix))];
                     const cache = {};
+                    let maxTs = 0;
 
                     await Promise.all(prefixes.map(async prefix => {
                         const fetchRange = async (suffix) => {
@@ -375,8 +364,58 @@
                         await Promise.all([fetchRange('Google'), fetchRange('FB'), fetchConv()]);
                     }));
 
+                    // Find latest date in ALL data
+                    Object.values(cache).forEach(rows => {
+                        if (!rows || rows.length < 2) return;
+                        const h = rows[0];
+                        rows.slice(1).forEach(r => {
+                            const d = mapRow(h, r);
+                            if (d.Date && d.Date.getTime() > maxTs) maxTs = d.Date.getTime();
+                        });
+                    });
+                    
+                    // Set Global "Now" based on data
+                    if (maxTs > 0) setLatestDataDate(new Date(maxTs));
+
+                    // Process Clients
                     const results = clients.map(client => {
-                        const dates = getDates(client.type, month);
+                        // Pass the detected "latestDate" to getDates via the state
+                        // NOTE: State updates are async, so we use maxTs here directly for immediate calculation
+                        const currentRef = maxTs > 0 ? new Date(maxTs) : new Date();
+                        
+                        // Local version of getDates for immediate use
+                        const getDatesLocal = (type, sel) => {
+                            const now = currentRef;
+                            if (sel === 'last30') {
+                                const end = now;
+                                const start = new Date(now); start.setDate(now.getDate() - 30);
+                                const prevEnd = new Date(start); prevEnd.setDate(start.getDate() - 1);
+                                const prevStart = new Date(prevEnd); prevStart.setDate(prevEnd.getDate() - 30);
+                                return { start, end, prevStart, prevEnd };
+                            }
+                            let y = now.getFullYear(), m = now.getMonth();
+                            if (sel !== 'current') {
+                                const parts = sel.split('-');
+                                y = parseInt(parts[0]); m = parseInt(parts[1]) - 1;
+                            }
+                            const make = (d) => new Date(y, m, d);
+                            const makePrev = (d) => new Date(y, m - 1, d);
+                            let cur = {};
+                            if (type === 'apollo') cur = (sel === 'current' && now.getDate() >= 26) ? { start: make(26), end: new Date(y, m+1, 25) } : { start: makePrev(26), end: make(25) };
+                            else if (type === 'brandon') cur = (sel === 'current' && now.getDate() >= 21) ? { start: make(21), end: new Date(y, m+1, 20) } : { start: makePrev(21), end: make(20) };
+                            else if (type === 'hc1') cur = (sel === 'current' && now.getDate() >= 11) ? { start: make(11), end: new Date(y, m+1, 10) } : { start: makePrev(11), end: make(10) };
+                            else cur = { start: new Date(y, m, 1), end: new Date(y, m+1, 0) };
+                            
+                            let prevEnd = new Date(cur.end); prevEnd.setMonth(prevEnd.getMonth() - 1);
+                            const prevStart = new Date(cur.start); prevStart.setMonth(prevStart.getMonth() - 1);
+                            if (sel === 'current') {
+                                const msPassed = now - cur.start;
+                                prevEnd = new Date(prevStart.getTime() + msPassed);
+                            }
+                            return { ...cur, prevStart, prevEnd };
+                        };
+
+                        const dates = getDatesLocal(client.type, month);
                         const label = `${dates.start.toLocaleDateString('en-GB')} - ${dates.end.toLocaleDateString('en-GB')}`;
                         
                         let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
@@ -384,7 +423,6 @@
                         
                         let gBudgets = new Map(), fBudgets = new Map();
                         let maxDateG = 0, maxDateF = 0;
-                        const matchedCampaigns = new Set();
 
                         const processTab = (tabName, isConv = false) => {
                             const rows = cache[tabName];
@@ -398,14 +436,12 @@
                                 const match = client.camps.includes('*') || client.camps.some(c => rowText.includes(normalize(c)));
                                 if (!match) return;
 
-                                // Regional Exclusion
                                 if (client.name.includes('England/Wales')) {
                                     const regions = ['Midlands', 'North East', 'North West', 'Scotland', 'South', 'Yorkshire', 'Humber'];
                                     if (regions.some(reg => rowText.includes(normalize(reg)))) return;
                                 }
 
                                 if (d.Date >= dates.start && d.Date <= dates.end) {
-                                    matchedCampaigns.add(d.Campaign || d.Adset); // Log matches
                                     if (isConv) { stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; }
                                     else {
                                         stats.total += d.Cost;
@@ -444,7 +480,7 @@
                         gBudgets.forEach(v => gDaily += v);
                         fBudgets.forEach(v => fDaily += v);
 
-                        const today = new Date();
+                        const today = currentRef;
                         const daysTotal = Math.ceil((dates.end - dates.start) / 86400000);
                         const passed = Math.max(1, Math.min(daysTotal, Math.ceil((today - dates.start) / 86400000)));
                         const left = Math.max(0, daysTotal - passed);
@@ -470,8 +506,7 @@
                                 conversions: prev.careApps + prev.nurseApps + prev.supportApps,
                                 careConversions: prev.careApps, nursingConversions: prev.nurseApps, supportConversions: prev.supportApps,
                                 ctr: prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount).toFixed(2) : 0
-                            },
-                            matchedCampaigns: matchedCampaigns
+                            }
                         };
                     });
                     setData(results);
@@ -493,16 +528,13 @@
                     <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
                         <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Client Budgets</h1>
                         <div className="flex gap-4">
-                            <button onClick={() => setDebug(!debug)} className={`px-3 py-2 rounded-lg text-sm font-bold ${debug ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
-                                {debug ? 'Debug: ON' : 'Debug'}
-                            </button>
                             <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={months} />
                             <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors shadow-sm">Refresh</button>
                         </div>
                     </div>
                     {loading && <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
-                        {data.map(c => <ClientCard key={c.name} client={c} debug={debug} />)}
+                        {data.map(c => <ClientCard key={c.name} client={c} />)}
                     </div>
                 </div>
             );
