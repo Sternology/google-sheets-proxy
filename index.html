@@ -3,77 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Client Budget Performance Dashboard</title>
+    <title>Client Budget Dashboard</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif; }
-        .gauge-chart { position: relative; width: 120px; height: 120px; }
-        .gauge-svg { transform: rotate(-90deg); }
-        .gauge-bg { fill: none; stroke: #f3f4f6; stroke-width: 15; }
-        .gauge-fill { fill: none; stroke-width: 15; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
-        .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
-        .kpi-badge { position: relative; overflow: hidden; border: 1px solid #e5e7eb; }
-        .kpi-badge::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: currentColor; opacity: 0.3; }
+        body { background-color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+        .gauge-bg { fill: none; stroke: #e2e8f0; stroke-width: 12; }
+        .gauge-fill { fill: none; stroke-width: 12; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease; }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="bg-gray-50 p-6">
+<body class="p-6">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect, useCallback } = React;
+        const { useState, useMemo, useEffect } = React;
 
-        // --- HELPERS ---
-        
+        // --- 1. ROBUST HELPERS ---
+
+        const formatMoney = (amount) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(amount);
+        const formatNumber = (num) => new Intl.NumberFormat('en-GB').format(num);
+
         const parseSheetDate = (dateStr) => {
             if (!dateStr) return null;
-            const cleanStr = String(dateStr).trim();
-            const isoMatch = cleanStr.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
-            if (isoMatch) return new Date(isoMatch[1], isoMatch[2] - 1, isoMatch[3]);
-            const ukMatch = cleanStr.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
-            if (ukMatch) return new Date(ukMatch[3], ukMatch[2] - 1, ukMatch[1]);
-            const d = new Date(cleanStr);
+            const s = String(dateStr).trim();
+            // ISO (2025-01-01) - Standard in your new files
+            const iso = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+            if (iso) return new Date(iso[1], iso[2] - 1, iso[3]);
+            // UK (01/01/2025) - Fallback
+            const uk = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+            if (uk) return new Date(uk[3], uk[2] - 1, uk[1]);
+            const d = new Date(s);
             return isNaN(d.getTime()) ? null : d;
         };
 
-        const isDateInRange = (dateObj, startDate, endDate) => {
-            if (!dateObj || isNaN(dateObj.getTime())) return false;
-            const check = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-            const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-            const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
-            return check >= start && check <= end;
-        };
-
-        // --- DATA MAPPING ---
-
+        // --- 2. SMART DATA MAPPER ---
+        // Handles the specific column names from your Porter Metrics export
         const mapRow = (headers, row) => {
             const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '' };
+            
             headers.forEach((h, i) => {
                 if (!h || !row[i]) return;
+                const header = h.trim();
+                const headerLower = header.toLowerCase();
                 const val = row[i];
-                const header = h.trim().toLowerCase();
-                
-                if (header === 'date' || header === 'day') obj.Date = parseSheetDate(val);
-                else if (header.includes('adset name')) obj.Adset = val;
+
+                // Date
+                if (headerLower === 'date' || headerLower === 'day') obj.Date = parseSheetDate(val);
+                // Adset Name (for deduplication)
+                else if (headerLower.includes('adset name')) obj.Adset = val;
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
-                        if (header === 'cost' || header.includes('amount spent')) obj.Cost = num;
+                        // SPEND
+                        if (header === 'Amount spent (GBP)' || header === 'Cost' || header === 'Amount spent') obj.Cost = num;
                         
+                        // BUDGET (The Fix: Handle Pence vs Pounds)
                         else if (header.includes('budget')) {
-                            // FB is in Pence (800 = £8.00), Google is in Pounds (29 = £29.00)
-                            if (header.includes('adset daily budget')) obj.DailyBudget = num / 100; 
-                            else obj.DailyBudget = num;
+                            if (header === 'Adset daily budget') obj.DailyBudget = num / 100; // Fix: 800p -> £8.00
+                            else if (header === 'Budget Amount') obj.DailyBudget = num;       // Fix: £29 -> £29.00
                         }
                         
-                        else if (header.includes('ctr')) obj.CTR = num;
-                        else if (header.includes('conversion') || header.includes('application')) {
-                            if (!header.includes('cost') && !header.includes('rate')) {
-                                if (header.includes('nurse')) obj.NurseApps = num;
-                                else if (header.includes('support')) obj.SupportApps = num;
-                                else obj.CareApps = num;
+                        // CTR
+                        else if (headerLower.includes('ctr')) obj.CTR = num;
+                        
+                        // CONVERSIONS
+                        else if (headerLower.includes('conversion') || headerLower.includes('application')) {
+                            if (!headerLower.includes('cost') && !headerLower.includes('rate')) {
+                                if (headerLower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
+                                else if (header.includes('Support Worker')) obj.SupportApps = num;
+                                else if (header.includes('Care') || headerLower.includes('care')) obj.CareApps = num;
                             }
                         }
                     }
@@ -82,193 +84,178 @@
             return obj;
         };
 
-        // --- COMPONENTS ---
+        // --- 3. VISUAL COMPONENTS ---
 
-        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
-            <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-gray-700">View Period:</label>
-                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label} {m.isCurrent ? '(Current)' : ''}</option>)}
-                </select>
-            </div>
-        );
+        const Card = ({ children }) => <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 animate-fade-in">{children}</div>;
 
-        const KPIScorecard = ({ label, value, unit, icon, performance }) => {
-            const getPerformanceColor = () => {
-                switch(performance) {
-                    case 'excellent': return 'text-green-600 bg-green-50 border-green-200';
-                    case 'good': return 'text-blue-600 bg-blue-50 border-blue-200';
-                    case 'average': return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-                    case 'poor': return 'text-red-600 bg-red-50 border-red-200';
-                    default: return 'text-gray-600 bg-gray-50 border-gray-200';
-                }
-            };
+        const KPICard = ({ label, value, icon, color = "blue" }) => {
+            const theme = {
+                green: "bg-emerald-50 text-emerald-700 border-emerald-100",
+                blue: "bg-blue-50 text-blue-700 border-blue-100",
+                orange: "bg-orange-50 text-orange-700 border-orange-100"
+            }[color];
             return (
-                <div className={`kpi-badge p-3 rounded-lg ${getPerformanceColor()} shadow-sm`}>
-                    <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center">
-                            <span className="text-lg mr-2">{icon}</span>
-                            <div className="text-xs font-medium opacity-75">{label}</div>
-                        </div>
+                <div className={`p-3 rounded-lg border ${theme}`}>
+                    <div className="flex items-center gap-2 mb-1 opacity-80">
+                        <span className="text-xl">{icon}</span>
+                        <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
                     </div>
-                    <div className="flex items-baseline">
-                        <span className="text-xl font-bold">{value}</span>
-                        {unit && <span className="text-xs ml-1 opacity-75">{unit}</span>}
-                    </div>
+                    <div className="text-2xl font-bold">{value}</div>
                 </div>
             );
         };
 
-        const GaugeChart = ({ value, maxValue, color, label, displayValue }) => {
-            const radius = 45;
-            const circumference = 2 * Math.PI * radius;
-            const percentage = Math.min(value / maxValue, 1);
-            const strokeDashoffset = circumference - (percentage * circumference);
-
+        const Gauge = ({ pct, label, sub, color }) => {
+            const r = 40, c = 2 * Math.PI * r;
+            const off = c - (Math.min(pct, 100) / 100) * c;
             return (
-                <div className="relative bg-white p-4 rounded-lg border border-gray-200">
-                    <div className="text-center mb-2"><div className="text-xs font-medium text-gray-600">{label}</div></div>
-                    <div className="gauge-chart mx-auto">
-                        <svg className="gauge-svg" width="120" height="120">
-                            <circle cx="60" cy="60" r={radius} className="gauge-bg" />
-                            <circle cx="60" cy="60" r={radius} className="gauge-fill" style={{ stroke: color, strokeDasharray: circumference, strokeDashoffset: strokeDashoffset }} />
+                <div className="flex flex-col items-center justify-center">
+                    <div className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</div>
+                    <div className="relative w-24 h-24">
+                        <svg className="w-full h-full -rotate-90">
+                            <circle cx="48" cy="48" r={r} stroke="#f1f5f9" strokeWidth="8" fill="none" />
+                            <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
+                                style={{ strokeDasharray: c, strokeDashoffset: off }} className="transition-all duration-700" />
                         </svg>
-                        <div className="gauge-text">
-                            <div className="text-lg font-bold" style={{ color }}>{displayValue}</div>
-                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center font-bold text-gray-700">{sub}</div>
                     </div>
                 </div>
             );
         };
 
-        const BudgetAdjustmentCard = ({ client }) => {
+        const BudgetAction = ({ client }) => {
             if (client.isHistorical) {
                 const diff = client.budget - client.total;
                 const under = diff >= 0;
                 return (
-                    <div className={`mt-4 p-4 rounded-lg border ${under ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
-                        <div className="flex justify-between font-bold">
-                            <span>{under ? 'Under Budget' : 'Over Budget'}</span>
-                            <span className={under ? 'text-blue-600' : 'text-red-600'}>{under ? '-' : '+'}{Math.abs(diff).toFixed(0)}</span>
-                        </div>
+                    <div className={`mt-4 p-4 rounded-lg border flex justify-between ${under ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                        <span className="font-bold">{under ? 'Under Budget' : 'Over Budget'}</span>
+                        <span className="font-mono font-bold">{under ? '-' : '+'}{formatMoney(Math.abs(diff))}</span>
                     </div>
                 );
             }
 
             const remaining = client.budget - client.total;
-            const targetDaily = Math.max(0, remaining / client.daysLeft);
-            const change = targetDaily - client.currentDailyBudget;
+            const target = Math.max(0, remaining / client.daysLeft);
+            const current = client.currentDailyBudget;
+            const change = target - current;
             
-            let recGoogle = 0, recFB = 0;
-            const totalCurrent = client.googleDailyBudget + client.facebookDailyBudget;
-            
-            if (client.name.includes('Brandon')) {
-                recFB = targetDaily;
-            } else if (totalCurrent > 0) {
-                const ratio = client.googleDailyBudget / totalCurrent;
-                recGoogle = targetDaily * ratio;
-                recFB = targetDaily * (1 - ratio);
-            } else {
-                recGoogle = targetDaily / 2;
-                recFB = targetDaily / 2;
-            }
-
+            // Logic
             let status = 'normal';
             if (client.total >= client.budget) status = 'critical';
-            else if (Math.abs(change) < 5) status = 'optimal';
+            else if (Math.abs(change) < 3) status = 'optimal';
             else if (change > 0) status = 'increase';
             else status = 'decrease';
 
-            const bgClass = {
-                critical: 'bg-red-50 border-red-300 text-red-900',
-                increase: 'bg-blue-50 border-blue-300 text-blue-900',
-                decrease: 'bg-orange-50 border-orange-300 text-orange-900',
-                optimal: 'bg-green-50 border-green-300 text-green-900',
-                normal: 'bg-gray-50 border-gray-300 text-gray-900'
+            const colors = {
+                critical: "bg-red-100 border-red-300 text-red-900",
+                increase: "bg-blue-50 border-blue-200 text-blue-900",
+                decrease: "bg-orange-50 border-orange-200 text-orange-900",
+                optimal: "bg-emerald-50 border-emerald-200 text-emerald-900",
+                normal: "bg-gray-50 border-gray-200 text-gray-900"
             }[status];
 
+            const msg = {
+                critical: "Budget Exhausted - Pause",
+                increase: "Increase Spend",
+                decrease: "Decrease Spend",
+                optimal: "Spend is Optimal",
+                normal: "Adjust Spend"
+            }[status];
+
+            // Split
+            let gRec = 0, fRec = 0;
+            const totalCur = client.googleDailyBudget + client.facebookDailyBudget;
+            
+            if (client.name.includes('Brandon')) { fRec = target; }
+            else if (totalCur > 0) {
+                const ratio = client.googleDailyBudget / totalCur;
+                gRec = target * ratio; fRec = target * (1 - ratio);
+            } else { gRec = target / 2; fRec = target / 2; }
+
             return (
-                <div className={`mt-4 p-4 rounded-lg border-2 ${bgClass}`}>
-                    <div className="flex items-center gap-2 mb-3">
+                <div className={`mt-4 p-4 rounded-lg border ${colors}`}>
+                    <div className="flex items-center gap-2 mb-3 border-b border-black/10 pb-2">
                         <span className="text-xl">{status === 'critical' ? '🚨' : status === 'optimal' ? '✅' : '⚙️'}</span>
-                        <div className="font-bold text-sm">
-                            {status === 'optimal' ? 'Budget On Track' : 'Adjustment Needed'}
-                        </div>
+                        <div><div className="text-xs uppercase opacity-70 font-bold">Action</div><div className="font-bold">{msg}</div></div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <div className="text-xs opacity-75">TOTAL DAILY</div>
-                            <div className="flex justify-between"><span>Current:</span><strong>£{client.currentDailyBudget.toFixed(0)}</strong></div>
-                            <div className="flex justify-between"><span>Target:</span><strong>£{targetDaily.toFixed(0)}</strong></div>
-                            <div className="flex justify-between border-t border-current pt-1 mt-1 font-bold">
-                                <span>Change:</span><span>{change > 0 ? '+' : ''}£{change.toFixed(0)}</span>
+                    {status !== 'optimal' && status !== 'critical' && (
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <div className="text-xs uppercase opacity-60 mb-1">Daily Target</div>
+                                <div className="flex justify-between"><span>Now</span><strong>{formatMoney(current)}</strong></div>
+                                <div className="flex justify-between"><span>Aim</span><strong>{formatMoney(target)}</strong></div>
+                                <div className="flex justify-between border-t border-black/10 mt-1 pt-1 font-bold"><span>Diff</span><span>{change > 0 ? '+' : ''}{formatMoney(change)}</span></div>
+                            </div>
+                            <div>
+                                <div className="text-xs uppercase opacity-60 mb-1">Split</div>
+                                {gRec > 0 && <div className="flex justify-between"><span>Google</span><span>{formatMoney(gRec)}</span></div>}
+                                {fRec > 0 && <div className="flex justify-between"><span>Meta</span><span>{formatMoney(fRec)}</span></div>}
                             </div>
                         </div>
-                        <div>
-                            <div className="text-xs opacity-75">PLATFORMS</div>
-                            {recGoogle > 0 && <div className="flex justify-between text-xs"><span>Google:</span><span>£{recGoogle.toFixed(0)}</span></div>}
-                            {recFB > 0 && <div className="flex justify-between text-xs"><span>Meta:</span><span>£{recFB.toFixed(0)}</span></div>}
-                        </div>
-                    </div>
+                    )}
                 </div>
             );
         };
 
         const ClientCard = ({ client }) => {
-            const [expanded, setExpanded] = useState(false);
+            const [open, setOpen] = useState(false);
             
-            let kpiLabel = 'Conversions', kpiVal = client.conversions, kpiIcon = '🎯';
-            if (client.name.includes('Nursing')) { kpiLabel = 'Nurse Apps'; kpiVal = client.nursingConversions; kpiIcon = '👩‍⚕️'; }
-            else if (client.name.includes('Brandon')) { kpiLabel = 'Support Apps'; kpiVal = client.supportConversions + client.careConversions; kpiIcon = '📝'; }
-            else if (client.name.includes('Care') || client.name.includes('HC-One') || client.name.includes('Apollo')) { kpiLabel = 'Care Apps'; kpiVal = client.careConversions; kpiIcon = '🏥'; }
+            let kpi = { lbl: 'Conversions', val: client.conversions, icon: '🎯' };
+            if (client.name.includes('Nursing')) kpi = { lbl: 'Nurse Apps', val: client.nursingConversions, icon: '👩‍⚕️' };
+            else if (client.name.includes('Brandon')) kpi = { lbl: 'Support Apps', val: client.supportConversions + client.careConversions, icon: '📝' };
+            else if (client.name.includes('Care') || client.name.includes('HC-One')) kpi = { lbl: 'Care Apps', val: client.careConversions, icon: '🏥' };
 
-            const cpa = kpiVal > 0 ? client.total / kpiVal : 0;
+            const cpa = kpi.val > 0 ? client.total / kpi.val : 0;
 
             return (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <div className="flex justify-between items-start mb-4">
+                <Card>
+                    <div className="flex justify-between items-start mb-6">
                         <div>
                             <h3 className="font-bold text-lg text-gray-900">{client.name}</h3>
-                            <div className="text-sm text-gray-500">{client.periodLabel}</div>
+                            <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">{client.periodLabel}</div>
                         </div>
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${
-                            client.status === 'HOT' ? 'bg-red-100 text-red-800' : 
-                            client.status === 'COLD' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                            client.status === 'HOT' ? 'bg-red-100 text-red-700' : 
+                            client.status === 'COLD' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
                         }`}>{client.status}</span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 mb-4">
-                        <GaugeChart value={client.pctUsed} maxValue={100} color={client.pctUsed > 100 ? '#EF4444' : '#10B981'} label="Budget Usage" displayValue={`${client.pctUsed.toFixed(0)}%`} />
-                        <div className="bg-white p-4 rounded-lg border border-gray-200 text-center flex flex-col justify-center">
-                            <div className="text-xs font-medium text-gray-600 mb-2">Pace</div>
-                            <div className="text-2xl">{client.status === 'HOT' ? '🔥' : client.status === 'COLD' ? '🧊' : '✅'}</div>
+                    <div className="grid grid-cols-3 gap-2 mb-6">
+                        <Gauge pct={client.pctUsed} label="Budget" sub={`${client.pctUsed.toFixed(0)}%`} color={client.pctUsed > 100 ? '#ef4444' : '#10b981'} />
+                        <div className="flex flex-col items-center justify-center p-2 bg-gray-50 rounded-lg border border-gray-100">
+                            <div className="text-xs font-bold text-gray-400 uppercase mb-2">Pace</div>
+                            <div className="text-3xl">{client.status === 'HOT' ? '🔥' : client.status === 'COLD' ? '🧊' : '✅'}</div>
                         </div>
-                        <GaugeChart value={(client.projected / client.budget) * 100} maxValue={130} color="#3B82F6" label="Projected" displayValue={`£${client.projected.toFixed(0)}`} />
+                        <Gauge pct={(client.projected/client.budget)*100} label="Projected" sub={formatMoney(client.projected)} color="#3b82f6" />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3 mb-4">
-                        <KPIScorecard label={kpiLabel} value={Math.floor(kpiVal)} icon={kpiIcon} performance="average" />
-                        <KPIScorecard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : 'N/A'} icon="💰" performance={cpa < 50 ? 'good' : 'average'} />
-                        <KPIScorecard label="CTR" value={`${client.ctr.toFixed(2)}`} unit="%" icon="👆" performance="good" />
+                    <div className="grid grid-cols-3 gap-3 mb-6">
+                        <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" />
+                        <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" />
+                        <KPICard label="CTR" value={`${client.ctr}%`} icon="👆" color="orange" />
                     </div>
 
-                    <BudgetAdjustmentCard client={client} />
+                    <BudgetAction client={client} />
 
-                    <div className="mt-4 pt-4 border-t">
-                        <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-between w-full text-sm text-gray-500 hover:text-gray-800">
-                            <span>Details</span><span>{expanded ? '▲' : '▼'}</span>
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                        <button onClick={() => setOpen(!open)} className="w-full flex justify-between text-sm text-gray-500 hover:text-gray-900">
+                            <span>Details</span><span>{open ? 'Hide' : 'Show'}</span>
                         </button>
-                        {expanded && (
-                            <div className="mt-3 space-y-2 text-sm text-gray-600">
-                                <div className="flex justify-between"><span>Total Spend:</span><strong>£{client.total.toFixed(2)}</strong></div>
-                                <div className="flex justify-between"><span>Budget:</span><strong>£{client.budget}</strong></div>
-                                <div className="flex justify-between"><span>Daily Budget (Platform):</span><strong>£{client.currentDailyBudget.toFixed(0)}</strong></div>
+                        {open && (
+                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                                <div className="flex justify-between"><span>Spend</span><strong>{formatMoney(client.total)}</strong></div>
+                                <div className="flex justify-between"><span>Budget</span><strong>{formatMoney(client.budget)}</strong></div>
+                                <div className="flex justify-between"><span>Current Daily</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
+                                <div className="flex justify-between"><span>Days Left</span><strong>{client.daysLeft}</strong></div>
                             </div>
                         )}
                     </div>
-                </div>
+                </Card>
             );
         };
+
+        // --- 4. MAIN CONTROLLER ---
 
         const Dashboard = () => {
             const [data, setData] = useState([]);
@@ -276,7 +263,7 @@
             const [month, setMonth] = useState('current');
             
             const PROXY = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
-            const SHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
+            const SHEET = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
             const KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
 
             const getDates = (type, sel) => {
@@ -289,143 +276,128 @@
                 const make = (d) => new Date(y, m, d);
                 const makePrev = (d) => new Date(y, m - 1, d);
 
-                if (type === 'apollo') {
-                    if (sel === 'current' && now.getDate() >= 26) return { start: make(26), end: new Date(y, m + 1, 25) };
-                    return { start: makePrev(26), end: make(25) };
-                }
-                if (type === 'brandon') {
-                    if (sel === 'current' && now.getDate() >= 21) return { start: make(21), end: new Date(y, m + 1, 20) };
-                    return { start: makePrev(21), end: make(20) };
-                }
-                if (type === 'hc1') {
-                    if (sel === 'current' && now.getDate() >= 11) return { start: make(11), end: new Date(y, m + 1, 10) };
-                    return { start: makePrev(11), end: make(10) };
-                }
-                return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) };
+                if (type === 'apollo') return (sel === 'current' && now.getDate() >= 26) ? { start: make(26), end: new Date(y, m+1, 25) } : { start: makePrev(26), end: make(25) };
+                if (type === 'brandon') return (sel === 'current' && now.getDate() >= 21) ? { start: make(21), end: new Date(y, m+1, 20) } : { start: makePrev(21), end: make(20) };
+                if (type === 'hc1') return (sel === 'current' && now.getDate() >= 11) ? { start: make(11), end: new Date(y, m+1, 10) } : { start: makePrev(11), end: make(10) };
+                return { start: new Date(y, m, 1), end: new Date(y, m+1, 0) };
             };
 
             const load = async () => {
                 setLoading(true);
                 try {
-                    // 1. Get Config and List of Clients
-                    const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=Config!A:F&apiKey=${KEY}`);
+                    // 1. Get Config
+                    const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=Config!A:F&apiKey=${KEY}`);
                     const cfgJson = await cfgRes.json();
                     const clients = cfgJson.values.slice(1).map(r => ({
                         name: r[0], budget: parseFloat(r[1].replace(/,/g, '')), type: r[2], prefix: r[3] || r[0], skip: r[4] === 'TRUE', camps: r[5] ? r[5].split(',') : []
                     }));
 
-                    // 2. Identify Unique Tabs Needed (Shared Cache Strategy)
-                    const prefixes = new Set(clients.map(c => c.prefix));
-                    const rawData = {}; 
+                    // 2. Fetch Unique Tabs (Shared Cache)
+                    const prefixes = [...new Set(clients.map(c => c.prefix))];
+                    const cache = {};
 
-                    // 3. Fetch All Required Data Once
-                    await Promise.all(Array.from(prefixes).map(async prefix => {
-                        const fetchTab = async (suffix) => {
+                    await Promise.all(prefixes.map(async prefix => {
+                        const fetchRange = async (suffix) => {
                             try {
                                 const range = (prefix + ' ' + suffix).includes('FB') ? `${prefix} ${suffix}!A:H` : `${prefix} ${suffix}!A:F`;
-                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
+                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
                                 const json = await res.json();
-                                if (json.values) {
-                                    const h = json.values[0];
-                                    rawData[`${prefix} ${suffix}`] = json.values.slice(1).map(r => mapRow(h, r)).filter(d => d.Date);
-                                }
+                                if (json.values) cache[`${prefix} ${suffix}`] = json.values;
                             } catch(e) {}
                         };
                         const fetchConv = async () => {
                             try {
-                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=${encodeURIComponent(prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
+                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
                                 const json = await res.json();
-                                if (json.values) {
-                                    const h = json.values[0];
-                                    rawData[`${prefix} Google Conversions`] = json.values.slice(1).map(r => mapRow(h, r));
-                                }
+                                if (json.values) cache[`${prefix} Google Conversions`] = json.values;
                             } catch(e) {}
                         };
-
-                        await Promise.all([fetchTab('Google'), fetchTab('FB'), fetchConv()]);
+                        await Promise.all([fetchRange('Google'), fetchRange('FB'), fetchConv()]);
                     }));
 
-                    // 4. Process Each Client using Shared Data
+                    // 3. Process Clients using Cache
                     const results = clients.map(client => {
                         const dates = getDates(client.type, month);
-                        const label = `${dates.start.toLocaleDateString()} - ${dates.end.toLocaleDateString()}`;
+                        const label = `${dates.start.toLocaleDateString('en-GB')} - ${dates.end.toLocaleDateString('en-GB')}`;
                         let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
-                        let lastGoogleBudget = 0;
-                        let lastFBBudgets = new Map();
+                        
+                        // Budget Tracking (Latest Date Strategy)
+                        let gBudgets = new Map(), fBudgets = new Map();
+                        let maxDateG = 0, maxDateF = 0;
 
-                        // Helper to process a tab from cache
-                        const processCachedTab = (tabName, isConv = false) => {
-                            const rows = rawData[tabName] || [];
-                            // Sort for budget logic
-                            rows.sort((a, b) => a.Date - b.Date);
-
-                            rows.forEach(d => {
-                                // Date Filter
+                        const processTab = (tabName, isConv = false) => {
+                            const rows = cache[tabName];
+                            if (!rows) return;
+                            const h = rows[0];
+                            rows.slice(1).forEach(r => {
+                                const d = mapRow(h, r);
+                                if (!d.Date) return;
+                                
+                                // Aggregation (Spend/Conv)
                                 if (d.Date >= dates.start && d.Date <= dates.end) {
-                                    if (!isConv) {
-                                        // Filter by Campaign Name
-                                        const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign || '').trim() === c.trim()) || client.camps.some(c => (d.Adset || '').trim() === c.trim()); // Loose matching
-                                        
+                                    if (isConv) {
+                                        stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps;
+                                    } else {
+                                        const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign||d.Adset||'').includes(c.trim()));
                                         if (match) {
                                             stats.total += d.Cost;
                                             if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
                                             stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
                                         }
-                                    } else {
-                                        // Conversions Tab
-                                        stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps;
                                     }
                                 }
-                                
-                                // Capture Latest Budget (Regardless of date range, usually)
-                                // But strictly, we should capture the latest budget *within* the range or just the absolute latest?
-                                // The previous "working" logic took the absolute latest in the file. Let's stick to valid dates to be safe.
-                                if (d.DailyBudget > 0) {
-                                    const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign || '').trim() === c.trim()) || client.camps.some(c => (d.Adset || '').trim() === c.trim());
+
+                                // Budget Logic (Find latest available data)
+                                if (d.DailyBudget > 0 && !isConv) {
+                                    const match = client.camps.includes('*') || client.camps.some(c => (d.Campaign||d.Adset||'').includes(c.trim()));
                                     if (match) {
-                                        if (tabName.includes('Google')) lastGoogleBudget = d.DailyBudget;
-                                        if (tabName.includes('FB')) lastFBBudgets.set(d.Adset, d.DailyBudget);
+                                        const time = d.Date.getTime();
+                                        if (tabName.includes('Google')) {
+                                            if (time > maxDateG) { maxDateG = time; gBudgets.clear(); }
+                                            if (time === maxDateG) gBudgets.set(d.Campaign || 'default', d.DailyBudget);
+                                        } else {
+                                            if (time > maxDateF) { maxDateF = time; fBudgets.clear(); }
+                                            if (time === maxDateF) fBudgets.set(d.Adset || 'default', d.DailyBudget);
+                                        }
                                     }
                                 }
                             });
                         };
 
-                        processCachedTab(`${client.prefix} Google`);
-                        processCachedTab(`${client.prefix} FB`);
-                        processCachedTab(`${client.prefix} Google Conversions`, true);
+                        processTab(`${client.prefix} Google`);
+                        processTab(`${client.prefix} FB`);
+                        processTab(`${client.prefix} Google Conversions`, true);
 
-                        let fbDailyTotal = 0;
-                        lastFBBudgets.forEach(v => fbDailyTotal += v);
-                        const dailyBudget = lastGoogleBudget + fbDailyTotal;
+                        // Sum latest budgets
+                        let dailyG = 0, dailyF = 0;
+                        gBudgets.forEach(v => dailyG += v);
+                        fBudgets.forEach(v => dailyF += v);
 
                         const today = new Date();
                         const daysTotal = Math.ceil((dates.end - dates.start) / 86400000);
-                        const daysElapsed = Math.min(daysTotal, Math.ceil((today - dates.start) / 86400000));
-                        const daysLeft = Math.max(0, daysTotal - daysElapsed);
+                        const passed = Math.min(daysTotal, Math.ceil((today - dates.start) / 86400000));
+                        const left = Math.max(0, daysTotal - passed);
                         
-                        const avgSpend = daysElapsed > 0 ? stats.total / daysElapsed : 0;
-                        const projected = stats.total + (avgSpend * daysLeft);
-                        const pctUsed = (stats.total / client.budget) * 100;
+                        const avg = passed > 0 ? stats.total / passed : 0;
+                        const proj = stats.total + (avg * left);
                         
                         let status = 'ON TRACK';
-                        if (projected > client.budget * 1.05) status = 'HOT';
-                        else if (projected < client.budget * 0.95) status = 'COLD';
+                        if (proj > client.budget * 1.05) status = 'HOT';
+                        else if (proj < client.budget * 0.95) status = 'COLD';
                         if (stats.total >= client.budget) status = 'OVER BUDGET';
 
                         return {
-                            ...client, ...stats, periodLabel: label, daysLeft, projected, pctUsed, status,
-                            currentDailyBudget: dailyBudget,
-                            googleDailyBudget: lastGoogleBudget,
-                            facebookDailyBudget: fbDailyTotal,
+                            ...client, ...stats, periodLabel: label, daysLeft: left, projected: proj, pctUsed: (stats.total/client.budget)*100, status,
+                            currentDailyBudget: dailyG + dailyF,
+                            googleDailyBudget: dailyG, facebookDailyBudget: dailyF,
                             conversions: stats.careApps + stats.nurseApps + stats.supportApps,
                             careConversions: stats.careApps, nursingConversions: stats.nurseApps, supportConversions: stats.supportApps,
-                            ctr: stats.ctrCount > 0 ? stats.ctrSum / stats.ctrCount : 0,
+                            ctr: stats.ctrCount > 0 ? (stats.ctrSum / stats.ctrCount).toFixed(2) : 0,
                             isHistorical: month !== 'current'
                         };
                     });
-
                     setData(results);
-                } catch (e) { console.error(e); }
+                } catch(e) { console.error(e); }
                 setLoading(false);
             };
 
@@ -433,16 +405,18 @@
 
             return (
                 <div className="max-w-7xl mx-auto">
-                    <div className="flex justify-between items-center mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900">Client Budgets</h1>
+                    <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+                        <h1 className="text-3xl font-bold text-gray-800">Client Budgets</h1>
                         <div className="flex gap-4">
                             <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={[
                                 {value:'current', label:'Current'}, {value:'2025-11', label:'Nov 2025'}, {value:'2025-10', label:'Oct 2025'}
                             ]} />
-                            <button onClick={load} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Refresh</button>
+                            <button onClick={load} className="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800">Refresh</button>
                         </div>
                     </div>
+                    
                     {loading && <div className="text-center py-12 text-gray-500">Loading...</div>}
+                    
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                         {data.map(c => <ClientCard key={c.name} client={c} />)}
                     </div>
