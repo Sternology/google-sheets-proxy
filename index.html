@@ -23,13 +23,14 @@
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val);
 
-        // Normalize text for fuzzy matching (ignores case, dashes, extra spaces)
-        const normalizeText = (text) => {
+        // Normalized Matcher: Removes case, dashes, pipes, and extra spaces
+        const normalize = (text) => {
             if (!text) return '';
             return text.toLowerCase()
-                .replace(/–/g, '-')   // Replace en-dash with hyphen
-                .replace(/—/g, '-')   // Replace em-dash with hyphen
-                .replace(/\s+/g, ' ') // Collapse multiple spaces
+                .replace(/–/g, '-')
+                .replace(/—/g, '-')
+                .replace(/\|/g, '') // Ignore pipes
+                .replace(/\s+/g, ' ')
                 .trim();
         };
 
@@ -58,13 +59,24 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
-                        if (lower.includes('amount spent') || lower === 'cost') obj.Cost = num;
-                        else if (lower.includes('budget')) {
-                            // Fix: FB is pence (800 -> 8.00), Google is pounds (29 -> 29.00)
-                            if (lower.includes('adset')) obj.DailyBudget = num / 100;
-                            else obj.DailyBudget = num;
+                        // SPEND with Auto-Pence Detection
+                        if (lower.includes('amount spent') || lower === 'cost') {
+                            // If daily spend > 200, assume it's Pence (e.g. 1280p) and convert to Pounds (£12.80)
+                            // Unless it's Google (Cost), which is usually reliable. Mainly for FB 'Amount spent'.
+                            if (num > 200 && lower.includes('amount spent')) obj.Cost = num / 100;
+                            else obj.Cost = num;
                         }
+                        
+                        // BUDGET
+                        else if (lower.includes('budget')) {
+                            if (lower.includes('adset')) obj.DailyBudget = num / 100; // FB Pence
+                            else obj.DailyBudget = num; // Google Pounds
+                        }
+                        
+                        // CTR
                         else if (lower.includes('ctr')) obj.CTR = num;
+                        
+                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
                                 if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
@@ -319,7 +331,6 @@
                 let prevEnd = new Date(cur.end); prevEnd.setMonth(prevEnd.getMonth() - 1);
                 const prevStart = new Date(cur.start); prevStart.setMonth(prevStart.getMonth() - 1);
                 
-                // If viewing CURRENT partial period, limit Previous view to the same # of days passed
                 if (sel === 'current') {
                     const msPassed = now - cur.start;
                     prevEnd = new Date(prevStart.getTime() + msPassed);
@@ -377,15 +388,13 @@
                                 const d = mapRow(h, r);
                                 if (!d.Date) return;
                                 
-                                // SMART MATCHING (Normalized)
-                                const rowText = normalizeText(d.Campaign + ' ' + d.Adset);
-                                const match = client.camps.includes('*') || client.camps.some(c => rowText.includes(normalizeText(c)));
+                                const rowText = normalize(d.Campaign + ' ' + d.Adset);
+                                const match = client.camps.includes('*') || client.camps.some(c => rowText.includes(normalize(c)));
                                 if (!match) return;
 
-                                // Exclusion Logic for Main HC1
                                 if (client.name.includes('England/Wales')) {
                                     const regions = ['Midlands', 'North East', 'North West', 'Scotland', 'South', 'Yorkshire', 'Humber'];
-                                    if (regions.some(reg => rowText.includes(normalizeText(reg)))) return;
+                                    if (regions.some(reg => rowText.includes(normalize(reg)))) return;
                                 }
 
                                 // CURRENT
@@ -413,10 +422,10 @@
                                     const t = d.Date.getTime();
                                     if (tabName.includes('Google')) {
                                         if (t > maxDateG) { maxDateG = t; gBudgets.clear(); }
-                                        if (t === maxDateG) gBudgets.set(normalizeText(d.Campaign)||'def', d.DailyBudget);
+                                        if (t === maxDateG) gBudgets.set(normalize(d.Campaign)||'def', d.DailyBudget);
                                     } else {
                                         if (t > maxDateF) { maxDateF = t; fBudgets.clear(); }
-                                        if (t === maxDateF) fBudgets.set(normalizeText(d.Adset)||'def', d.DailyBudget);
+                                        if (t === maxDateF) fBudgets.set(normalize(d.Adset)||'def', d.DailyBudget);
                                     }
                                 }
                             });
