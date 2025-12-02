@@ -17,6 +17,16 @@
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
+        
+        /* Graph Animation */
+        .draw-path {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: draw 2s ease-out forwards;
+        }
+        @keyframes draw {
+            to { stroke-dashoffset: 0; }
+        }
     </style>
 </head>
 <body class="p-6">
@@ -27,7 +37,6 @@
 
         // --- HELPERS ---
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
-        const formatMoneyDec = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 2 }).format(val);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val);
 
         const normalize = (text) => {
@@ -89,6 +98,75 @@
 
         // --- COMPONENTS ---
 
+        // NEW: Trend Chart Component
+        const TrendChart = ({ dailyData }) => {
+            const [expanded, setExpanded] = useState(false);
+
+            if (!dailyData || dailyData.length < 2) return null;
+
+            // Prepare Data Points
+            const width = 100;
+            const height = 50;
+            const data = dailyData.sort((a,b) => a.date - b.date);
+            
+            // Normalization Helper (scales values 0-100 for the graph)
+            const getPath = (key) => {
+                const values = data.map(d => d[key] || 0);
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+                if (max === min) return "";
+
+                return data.map((d, i) => {
+                    const x = (i / (data.length - 1)) * width;
+                    const y = height - ((d[key] - min) / (max - min)) * height;
+                    return `${x},${y}`;
+                }).join(" ");
+            };
+
+            return (
+                <div className="mt-4 border-t border-gray-100 pt-2">
+                    <button 
+                        onClick={() => setExpanded(!expanded)}
+                        className="w-full flex items-center justify-between text-xs font-bold uppercase text-gray-400 hover:text-gray-600 tracking-wider py-2"
+                    >
+                        <span>Trend Analysis</span>
+                        <span>{expanded ? 'Hide' : 'Show'}</span>
+                    </button>
+
+                    <div className={`overflow-hidden transition-all duration-500 ease-in-out ${expanded ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'}`}>
+                        <div className="bg-gray-50 rounded-lg p-3 mt-2">
+                            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24 overflow-visible">
+                                {/* Grid Lines */}
+                                <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" />
+                                <line x1="0" y1="25" x2="100" y2="25" stroke="#e5e7eb" strokeWidth="0.5" />
+                                <line x1="0" y1="50" x2="100" y2="50" stroke="#e5e7eb" strokeWidth="0.5" />
+                                
+                                {/* CPA Line (Blue) */}
+                                <polyline points={getPath('cpa')} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" />
+                                
+                                {/* Conversions Line (Green) */}
+                                <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.2s'}} />
+                                
+                                {/* CTR Line (Orange) */}
+                                <polyline points={getPath('ctr')} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.4s'}} />
+                            </svg>
+                            
+                            <div className="flex justify-between text-[10px] text-gray-400 mt-2 font-mono">
+                                <span>{data[0].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
+                                <span>{data[data.length-1].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
+                            </div>
+
+                            <div className="flex justify-center gap-4 mt-2">
+                                <div className="flex items-center text-[10px] font-bold text-emerald-600"><div className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></div>Conv</div>
+                                <div className="flex items-center text-[10px] font-bold text-blue-600"><div className="w-2 h-2 rounded-full bg-blue-500 mr-1"></div>CPA</div>
+                                <div className="flex items-center text-[10px] font-bold text-orange-500"><div className="w-2 h-2 rounded-full bg-orange-500 mr-1"></div>CTR</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
             <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
                 <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
@@ -98,10 +176,8 @@
             </div>
         );
 
-        // UPDATED: Interactive Flip Card for Metrics
         const KPICard = ({ label, value, icon, color, trend, prevValue, details }) => {
             const [flipped, setFlipped] = useState(false);
-            
             const theme = {
                 green: "bg-emerald-50 text-emerald-700 border-emerald-200",
                 blue: "bg-blue-50 text-blue-700 border-blue-200",
@@ -118,16 +194,12 @@
                 if (isCPA) trendColor = isPositive ? "text-red-700 bg-red-100" : "text-emerald-700 bg-emerald-100";
                 else trendColor = isPositive ? "text-emerald-700 bg-emerald-100" : "text-red-700 bg-red-100";
             }
-
+            
             return (
-                <div 
-                    className="perspective-1000 h-32 cursor-pointer group"
-                    onClick={() => setFlipped(!flipped)}
-                >
+                <div className="perspective-1000 h-32 cursor-pointer group" onClick={() => setFlipped(!flipped)}>
                     <div className={`relative w-full h-full transition-transform duration-500 transform-style-3d ${flipped ? 'rotate-y-180' : ''}`}>
-                        
-                        {/* FRONT FACE */}
-                        <div className={`absolute w-full h-full backface-hidden p-4 rounded-xl border ${theme} flex flex-col justify-center shadow-sm group-hover:shadow-md transition-shadow`}>
+                        {/* FRONT */}
+                        <div className={`absolute w-full h-full backface-hidden p-4 rounded-xl border ${theme} flex flex-col justify-center shadow-sm group-hover:shadow-md`}>
                             <div className="flex justify-between items-start mb-2">
                                 <div className="flex items-center gap-2 opacity-90">
                                     <span className="text-xl">{icon}</span>
@@ -141,14 +213,11 @@
                             </div>
                             <div className="text-2xl font-bold">{value}</div>
                             {prevValue && <div className="text-xs opacity-60 mt-1 font-medium">vs {prevValue} prev</div>}
-                            
-                            <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px]">
-                                ↻ Click for split
-                            </div>
+                            <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px]">↻</div>
                         </div>
 
-                        {/* BACK FACE */}
-                        <div className={`absolute w-full h-full backface-hidden rotate-y-180 p-4 rounded-xl border bg-white border-gray-200 flex flex-col justify-center shadow-sm`}>
+                        {/* BACK */}
+                        <div className="absolute w-full h-full backface-hidden rotate-y-180 p-4 rounded-xl border bg-white border-gray-200 flex flex-col justify-center shadow-sm">
                             <div className="text-xs font-bold uppercase text-gray-400 mb-2 text-center">{label} Split</div>
                             <div className="grid grid-cols-2 gap-2 text-center">
                                 <div className="bg-orange-50 p-2 rounded">
@@ -170,21 +239,17 @@
             const r = 40, c = 2 * Math.PI * r;
             const off = c - (Math.min(pct, 100) / 100) * c;
             return (
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center justify-center relative">
                     <div className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</div>
                     <div className="relative flex items-center justify-center">
-                        <svg width="96" height="96" className="-rotate-90 transform">
+                        <svg width="96" height="96" className="-rotate-90">
                             <circle cx="48" cy="48" r={r} stroke="#e2e8f0" strokeWidth="8" fill="none" />
                             <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
                                 style={{ strokeDasharray: c, strokeDashoffset: off }} className="gauge-fill" />
                         </svg>
                         <div className="absolute font-bold text-gray-700 text-lg">{sub}</div>
                     </div>
-                    {detail && (
-                        <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">
-                            {detail}
-                        </div>
-                    )}
+                    {detail && <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">{detail}</div>}
                 </div>
             );
         };
@@ -266,33 +331,29 @@
         const ClientCard = ({ client }) => {
             const [open, setOpen] = useState(false);
             
-            // MAIN KPI LOGIC (Nurse vs Care vs Support)
-            let type = 'Conversions'; 
-            let icon = '🎯';
-            
-            let gVal = client.gConversions, fVal = client.fConversions;
-            
-            if (client.name.includes('Nursing')) { type = 'Nurse Apps'; icon = '👩‍⚕️'; gVal = client.gNurse; fVal = client.fNurse; }
-            else if (client.name.includes('Brandon')) { type = 'Support Apps'; icon = '📝'; gVal = client.gSupport + client.gCare; fVal = client.fSupport + client.fCare; }
-            else if (client.name.includes('Care') || client.name.includes('HC-One') || client.name.includes('Apollo')) { type = 'Care Apps'; icon = '🏥'; gVal = client.gCare; fVal = client.fCare; }
+            let kpi = { lbl: 'Conversions', val: client.conversions, icon: '🎯', prev: client.prev.conversions };
+            if (client.name.includes('Nursing')) kpi = { lbl: 'Nurse Apps', val: client.nursingConversions, icon: '👩‍⚕️', prev: client.prev.nursingConversions };
+            else if (client.name.includes('Brandon')) kpi = { lbl: 'Support Apps', val: client.supportConversions + client.careConversions, icon: '📝', prev: client.prev.supportConversions + client.prev.careConversions };
+            else if (client.name.includes('Care') || client.name.includes('HC-One')) kpi = { lbl: 'Care Apps', val: client.careConversions, icon: '🏥', prev: client.prev.careConversions };
 
-            const totalVal = gVal + fVal;
-            const totalPrev = client.prev ? (client.prev.gVal + client.prev.fVal) : 0; // Simplified prev for trend
+            const calcTrend = (curr, prev) => prev > 0 ? ((curr - prev) / prev) * 100 : 0;
+            const convTrend = calcTrend(kpi.val, kpi.prev);
+            const cpa = kpi.val > 0 ? client.total / kpi.val : 0;
+            const prevCpa = kpi.prev > 0 ? client.prev.total / kpi.prev : 0;
+            const cpaTrend = calcTrend(cpa, prevCpa);
+            const ctrTrend = calcTrend(client.ctr, client.prev.ctr);
 
-            // CPA Calculation
+            // Split Calcs for Flip Cards
+            let gVal = 0, fVal = 0;
+            if(client.name.includes('Nursing')){ gVal=client.gNurse; fVal=client.fNurse; }
+            else if(client.name.includes('Brandon')){ gVal=client.gSupport; fVal=client.fSupport; }
+            else { gVal=client.gCare; fVal=client.fCare; }
+
             const gCpa = gVal > 0 ? client.google / gVal : 0;
             const fCpa = fVal > 0 ? client.facebook / fVal : 0;
-            const totalCpa = totalVal > 0 ? client.total / totalVal : 0;
+            const gCtr = client.gCtrCount > 0 ? client.gCtrSum/client.gCtrCount : 0;
+            const fCtr = client.fCtrCount > 0 ? client.fCtrSum/client.fCtrCount : 0;
 
-            // CTR
-            const gCtr = client.gCtrCount > 0 ? (client.gCtrSum / client.gCtrCount) : 0;
-            const fCtr = client.fCtrCount > 0 ? (client.fCtrSum / client.fCtrCount) : 0;
-            const totalCtr = (client.gCtrCount + client.fCtrCount) > 0 ? ((client.gCtrSum + client.fCtrSum) / (client.gCtrCount + client.fCtrCount)) : 0;
-
-            // Trends (Simplified)
-            const calcTrend = (curr, prev) => prev > 0 ? ((curr - prev) / prev) * 100 : 0;
-            // Note: Previous data is aggregated, so per-platform trends are not available in this simplified view, only Total trends.
-            
             return (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
                     <div className="flex justify-between items-start mb-6">
@@ -307,13 +368,7 @@
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 mb-6">
-                        <Gauge 
-                            pct={client.pctUsed} 
-                            label="Budget" 
-                            sub={`${client.pctUsed.toFixed(0)}%`} 
-                            color={client.pctUsed > 100 ? '#ef4444' : '#10b981'} 
-                            detail={`${formatMoney(client.total)} / ${formatMoney(client.budget)}`}
-                        />
+                        <Gauge pct={client.pctUsed} label="Budget" sub={`${client.pctUsed.toFixed(0)}%`} color={client.pctUsed > 100 ? '#ef4444' : '#10b981'} detail={`${formatMoney(client.total)} / ${formatMoney(client.budget)}`} />
                         <div className="flex flex-col items-center justify-center p-2 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="text-xs font-bold text-gray-400 uppercase mb-2">Pace</div>
                             <div className="text-3xl">{client.status === 'HOT' ? '🔥' : client.status === 'COLD' ? '🧊' : '✅'}</div>
@@ -322,43 +377,12 @@
                     </div>
 
                     <div className="grid grid-cols-3 gap-3">
-                        {/* CONVERSIONS CARD */}
-                        <KPICard 
-                            label={type} 
-                            value={formatNumber(Math.floor(totalVal))} 
-                            icon={icon} 
-                            color="green" 
-                            trend={calcTrend(totalVal, client.prev.conversions)}
-                            details={{
-                                google: formatNumber(Math.floor(gVal)),
-                                facebook: formatNumber(Math.floor(fVal))
-                            }}
-                        />
-                        {/* CPA CARD */}
-                        <KPICard 
-                            label="CPA" 
-                            value={totalCpa ? `£${totalCpa.toFixed(2)}` : '-'} 
-                            icon="💰" 
-                            color="blue" 
-                            trend={calcTrend(totalCpa, client.prev.cpa)}
-                            details={{
-                                google: gCpa ? `£${gCpa.toFixed(2)}` : '-',
-                                facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-'
-                            }}
-                        />
-                        {/* CTR CARD */}
-                        <KPICard 
-                            label="CTR" 
-                            value={`${totalCtr.toFixed(2)}%`} 
-                            icon="👆" 
-                            color="orange" 
-                            trend={calcTrend(totalCtr, client.prev.ctr)}
-                            details={{
-                                google: `${gCtr.toFixed(2)}%`,
-                                facebook: `${fCtr.toFixed(2)}%`
-                            }}
-                        />
+                        <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
+                        <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
+                        <KPICard label="CTR" value={`${client.ctr}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr}%` : null} details={{ google: `${gCtr.toFixed(2)}%`, facebook: `${fCtr.toFixed(2)}%` }} />
                     </div>
+                    
+                    <TrendChart dailyData={client.dailyData} />
 
                     <BudgetAction client={client} />
 
@@ -469,14 +493,15 @@
                         const dates = getDates(client.type, month);
                         const label = `${dates.start.toLocaleDateString('en-GB')} - ${dates.end.toLocaleDateString('en-GB')}`;
                         
-                        // SEPARATE STATS FOR GOOGLE / FACEBOOK TO SUPPORT FLIP CARDS
                         let g = { spend:0, care:0, nurse:0, support:0, ctrSum:0, ctrCount:0 };
                         let f = { spend:0, care:0, nurse:0, support:0, ctrSum:0, ctrCount:0 };
-                        
                         let prev = { total: 0, conversions:0, cpa:0, ctr:0, careConversions:0, nursingConversions:0, supportConversions:0, ctrSum:0, ctrCount:0 };
 
                         let gBudgets = new Map(), fBudgets = new Map();
                         let maxDateG = 0, maxDateF = 0;
+
+                        // NEW: Daily tracking for charts
+                        const dailyMap = new Map();
 
                         const processTab = (tabName, isConv = false) => {
                             const rows = cache[tabName];
@@ -495,19 +520,33 @@
                                     if (regions.some(reg => rowText.includes(normalize(reg)))) return;
                                 }
 
-                                // CURRENT PERIOD
-                                if (d.Date >= dates.start && d.Date <= dates.end) {
-                                    const target = tabName.includes('Google') ? g : f;
-                                    if (isConv) { 
-                                        target.care += d.CareApps; target.nurse += d.NurseApps; 
+                                const inCurrent = d.Date >= dates.start && d.Date <= dates.end;
+
+                                // DAILY STATS LOGIC
+                                if (inCurrent) {
+                                    const key = d.Date.toISOString().split('T')[0];
+                                    if (!dailyMap.has(key)) dailyMap.set(key, { date: d.Date, cost: 0, conv: 0, ctrSum: 0, ctrCount: 0 });
+                                    const day = dailyMap.get(key);
+
+                                    if (isConv) {
+                                        const c = d.CareApps + d.NurseApps;
+                                        day.conv += c;
+                                        // Aggregate totals
+                                        const target = tabName.includes('Google') ? g : f;
+                                        target.care += d.CareApps; target.nurse += d.NurseApps;
                                     } else {
+                                        day.cost += d.Cost;
+                                        if (d.CTR > 0) { day.ctrSum += d.CTR; day.ctrCount++; }
+                                        const c = d.CareApps + d.NurseApps + d.SupportApps;
+                                        day.conv += c;
+                                        
+                                        const target = tabName.includes('Google') ? g : f;
                                         target.spend += d.Cost;
                                         if (d.CTR > 0) { target.ctrSum += d.CTR; target.ctrCount++; }
                                         target.care += d.CareApps; target.nurse += d.NurseApps; target.support += d.SupportApps;
                                     }
                                 }
 
-                                // PREVIOUS PERIOD (Aggregated for trends)
                                 if (d.Date >= dates.prevStart && d.Date <= dates.prevEnd) {
                                     if (isConv) { prev.careConversions += d.CareApps; prev.nursingConversions += d.NurseApps; }
                                     else {
@@ -534,6 +573,14 @@
                         processTab(`${client.prefix} FB`);
                         processTab(`${client.prefix} Google Conversions`, true);
 
+                        // Process Daily Data for Chart
+                        const dailyData = Array.from(dailyMap.values()).map(d => ({
+                            date: d.date,
+                            conv: d.conv,
+                            cpa: d.conv > 0 ? d.cost / d.conv : 0,
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 // As percentage
+                        }));
+
                         let gDaily = 0, fDaily = 0;
                         gBudgets.forEach(v => gDaily += v);
                         fBudgets.forEach(v => fDaily += v);
@@ -552,32 +599,20 @@
                         else if (proj < client.budget * 0.95) status = 'COLD';
                         if (totalSpend >= client.budget) status = 'OVER BUDGET';
 
-                        // PREV CALCULATIONS
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
-                        prev.ctr = prev.ctrCount > 0 ? prev.ctrSum / prev.ctrCount : 0;
+                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) * 100 : 0;
                         
-                        // Determine KPI Vals for Flip Card
-                        let gVal=0, fVal=0; 
-                        if(client.name.includes('Nursing')){ gVal=g.nurse; fVal=f.nurse; }
-                        else if(client.name.includes('Brandon')){ gVal=g.support; fVal=f.support; }
-                        else { gVal=g.care; fVal=f.care; } // Default Care Apps
-
                         return {
                             ...client, 
                             periodLabel: label, daysLeft: left, projected: proj, pctUsed: (totalSpend/client.budget)*100, status,
                             currentDailyBudget: gDaily + fDaily,
                             googleDailyBudget: gDaily, facebookDailyBudget: fDaily,
                             
-                            // Split Data for Flip Cards
                             google: g.spend, facebook: f.spend,
-                            gConversions: g.care + g.nurse + g.support,
-                            fConversions: f.care + f.nurse + f.support,
-                            
                             gCare: g.care, fCare: f.care,
                             gNurse: g.nurse, fNurse: f.nurse,
                             gSupport: g.support, fSupport: f.support,
-
                             gCtrSum: g.ctrSum, gCtrCount: g.ctrCount,
                             fCtrSum: f.ctrSum, fCtrCount: f.ctrCount,
 
@@ -586,10 +621,11 @@
                             careConversions: g.care + f.care,
                             nursingConversions: g.nurse + f.nurse,
                             supportConversions: g.support + f.support,
-                            ctr: (g.ctrCount+f.ctrCount) > 0 ? (g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount) : 0,
+                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) * 100 : 0,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
-                            prev: prev
+                            prev: prev,
+                            dailyData: dailyData
                         };
                     });
                     
