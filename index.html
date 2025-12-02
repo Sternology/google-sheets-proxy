@@ -9,7 +9,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #f8fafc; font-family: -apple-system, system-ui, sans-serif; }
+        body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, system-ui, sans-serif; } /* Dark Mode for contrast */
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
     </style>
 </head>
@@ -25,7 +25,11 @@
 
         const normalize = (text) => {
             if (!text) return '';
-            return text.toLowerCase().replace(/–/g, '-').replace(/—/g, '-').replace(/\|/g, '').replace(/\s+/g, ' ').trim();
+            return text.toLowerCase()
+                .replace(/–/g, '-') // Normalize dashes
+                .replace(/—/g, '-')
+                .replace(/\s+/g, ' ') // Collapse spaces
+                .trim();
         };
 
         const parseSheetDate = (dateStr) => {
@@ -54,23 +58,27 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
+                        // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
                             if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
+                        // BUDGET
                         else if (lower.includes('budget')) {
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
+                        // CTR
                         else if (lower.includes('ctr')) obj.CTR = num;
+                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
                                 if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                 else if (header.includes('Support Worker')) obj.SupportApps = num;
                                 else if (header.includes('Care') || lower.includes('care')) {
                                     obj.RawCare = num; // Store raw for debug
-                                    // If value is huge (>20), it's likely a Value, not a Count. Ignore it to prevent inflation.
-                                    if (num < 20) obj.CareApps = num; 
+                                    // ANTI-INFLATION: If value > 5, assume it's Currency/Value, not Count.
+                                    if (num <= 5) obj.CareApps = num; 
                                 }
                             }
                         }
@@ -80,46 +88,45 @@
             return obj;
         };
 
-        // --- COMPONENTS ---
-
+        // --- DEBUG PANEL ---
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
-                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
-                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Debug Analysis Log</h3>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="text-slate-500">
-                                    <th className="pb-2">Client</th>
-                                    <th className="pb-2">Source Tab</th>
-                                    <th className="pb-2">Date</th>
-                                    <th className="pb-2">Campaign / Adset</th>
-                                    <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Raw Care</th>
-                                    <th className="pb-2 text-right">Counted Apps</th>
-                                    <th className="pb-2">Note</th>
+                <div className="mt-8 bg-black text-green-400 p-4 rounded-xl border border-gray-700 font-mono text-xs overflow-x-auto">
+                    <h3 className="text-lg font-bold text-white mb-2 border-b border-gray-700 pb-2">Debug Analysis Log</h3>
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="text-gray-500 border-b border-gray-800">
+                                <th className="p-2">Client</th>
+                                <th className="p-2">Source Tab</th>
+                                <th className="p-2">Date</th>
+                                <th className="p-2">Campaign / Adset</th>
+                                <th className="p-2 text-right">Spend</th>
+                                <th className="p-2 text-right">Raw Care</th>
+                                <th className="p-2 text-right">Counted Apps</th>
+                                <th className="p-2">Note</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {logs.map((log, i) => (
+                                <tr key={i} className="hover:bg-gray-900 border-b border-gray-900">
+                                    <td className="p-2 text-blue-400">{log.client}</td>
+                                    <td className="p-2 text-gray-400">{log.tab}</td>
+                                    <td className="p-2">{log.date}</td>
+                                    <td className="p-2 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
+                                    <td className="p-2 text-right">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
+                                    <td className="p-2 text-right text-yellow-500">{log.rawCare > 0 ? log.rawCare : '-'}</td>
+                                    <td className="p-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                    <td className="p-2 text-gray-500 italic">{log.note}</td>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-800">
-                                {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-800 transition-colors">
-                                        <td className="py-2 text-blue-400 font-bold">{log.client}</td>
-                                        <td className="py-2 opacity-70">{log.tab}</td>
-                                        <td className="py-2">{log.date}</td>
-                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
-                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
-                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
-                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             );
         };
+
+        // --- COMPONENTS ---
 
         const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
             <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
@@ -273,7 +280,7 @@
             const ctrTrend = calcTrend(client.ctr, client.prev.ctr);
 
             return (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
+                <div className="bg-white text-gray-900 rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
                     <div className="flex justify-between items-start mb-6">
                         <div>
                             <h3 className="font-bold text-lg text-gray-900">{client.name}</h3>
@@ -356,7 +363,6 @@
                 else if (type === 'hc1') cur = (sel === 'current' && now.getDate() >= 11) ? { start: make(11), end: new Date(y, m+1, 10) } : { start: makePrev(11), end: make(10) };
                 else cur = { start: new Date(y, m, 1), end: new Date(y, m+1, 0) };
 
-                // Calculate Pro-Rata Comparison
                 let prevEnd = new Date(cur.end); prevEnd.setMonth(prevEnd.getMonth() - 1);
                 const prevStart = new Date(cur.start); prevStart.setMonth(prevStart.getMonth() - 1);
                 
@@ -417,7 +423,6 @@
                     const tempLogs = [];
 
                     const results = clients.map(client => {
-                        // RE-CALC DATES with new MaxTS
                         const currentRef = maxTs > 0 ? new Date(maxTs) : new Date();
                         const getDatesLocal = (type, sel) => {
                             const now = currentRef;
@@ -478,7 +483,7 @@
 
                                 const inCurrent = d.Date >= dates.start && d.Date <= dates.end;
                                 
-                                // DEBUG LOGGING
+                                // LOGGING
                                 if (inCurrent && (d.Cost > 0 || d.CareApps > 0 || d.NurseApps > 0 || d.RawCare > 0)) {
                                     tempLogs.push({
                                         client: client.name,
@@ -579,13 +584,13 @@
             return (
                 <div className="max-w-7xl mx-auto">
                     <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                        <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Client Budgets</h1>
+                        <h1 className="text-3xl font-bold text-gray-800 tracking-tight text-white">Client Budgets</h1>
                         <div className="flex gap-4">
-                            <button onClick={() => setDebug(!debug)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${debug ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'}`}>
+                            <button onClick={() => setDebug(!debug)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${debug ? 'bg-red-600 text-white border-red-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}>
                                 {debug ? 'Debug ON' : 'Debug OFF'}
                             </button>
                             <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={months} />
-                            <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors shadow-sm">Refresh</button>
+                            <button onClick={load} className="bg-blue-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-blue-500 transition-colors shadow-sm">Refresh</button>
                         </div>
                     </div>
                     
