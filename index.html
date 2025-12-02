@@ -3,14 +3,434 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Client Budget Dashboard</title>
+    <title>Client Budget Performance Dashboard</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif; }
+        .gauge-chart { position: relative; width: 120px; height: 120px; }
+        .gauge-svg { transform: rotate(-90deg); }
+        .gauge-bg { fill: none; stroke: #f3f4f6; stroke-width: 15; }
+        .gauge-fill { fill: none; stroke-width: 15; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+        .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        .kpi-badge { position: relative; overflow: hidden; border: 1px solid #e5e7eb; }
+        .kpi-badge::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: currentColor; opacity: 0.3; }
+        .trend-arrow { display: inline-block; transition: transform 0.2s ease; font-weight: bold; }
+        .trend-arrow.up { transform: translateY(-1px); }
+        .trend-arrow.down { transform: translateY(1px); }
+        .trend-up { background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(16, 185, 129, 0.1) 100%); }
+        .trend-down { background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(239, 68, 68, 0.1) 100%); }
+    </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-50 p-6">
     <div id="root"></div>
-    <script type="text/babel" src="./dashboard.js"></script>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useCallback } = React;
+
+        // --- HELPERS FROM ORIGINAL LOGIC ---
+        
+        const parseSheetDate = (dateStr) => {
+            if (!dateStr) return null;
+            const cleanStr = String(dateStr).trim();
+            // Handle ISO (2025-01-01) - Seen in your file
+            const isoMatch = cleanStr.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+            if (isoMatch) return new Date(isoMatch[1], isoMatch[2] - 1, isoMatch[3]);
+            // Handle UK (01/01/2025)
+            const ukMatch = cleanStr.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+            if (ukMatch) return new Date(ukMatch[3], ukMatch[2] - 1, ukMatch[1]);
+            // Fallback
+            const d = new Date(cleanStr);
+            return isNaN(d.getTime()) ? null : d;
+        };
+
+        const isDateInRange = (dateObj, startDate, endDate) => {
+            if (!dateObj || isNaN(dateObj.getTime())) return false;
+            const check = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+            const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+            const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+            return check >= start && check <= end;
+        };
+
+        // --- COMPONENTS ---
+
+        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
+            <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-gray-700">View Period:</label>
+                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label} {m.isCurrent ? '(Current)' : ''}</option>)}
+                </select>
+            </div>
+        );
+
+        const KPIScorecard = ({ label, value, unit, icon, trend, performance, invertTrend }) => {
+            const getPerformanceColor = () => {
+                switch(performance) {
+                    case 'excellent': return 'text-green-600 bg-green-50 border-green-200';
+                    case 'good': return 'text-blue-600 bg-blue-50 border-blue-200';
+                    case 'average': return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+                    case 'poor': return 'text-red-600 bg-red-50 border-red-200';
+                    default: return 'text-gray-600 bg-gray-50 border-gray-200';
+                }
+            };
+            return (
+                <div className={`kpi-badge p-3 rounded-lg ${getPerformanceColor()} shadow-sm`}>
+                    <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center">
+                            <span className="text-lg mr-2">{icon}</span>
+                            <div className="text-xs font-medium opacity-75">{label}</div>
+                        </div>
+                    </div>
+                    <div className="flex items-baseline">
+                        <span className="text-xl font-bold">{value}</span>
+                        {unit && <span className="text-xs ml-1 opacity-75">{unit}</span>}
+                    </div>
+                </div>
+            );
+        };
+
+        const GaugeChart = ({ value, maxValue, color, label, displayValue }) => {
+            const radius = 45;
+            const circumference = 2 * Math.PI * radius;
+            const percentage = Math.min(value / maxValue, 1);
+            const strokeDashoffset = circumference - (percentage * circumference);
+
+            return (
+                <div className="relative bg-white p-4 rounded-lg border border-gray-200">
+                    <div className="text-center mb-2"><div className="text-xs font-medium text-gray-600">{label}</div></div>
+                    <div className="gauge-chart mx-auto">
+                        <svg className="gauge-svg" width="120" height="120">
+                            <circle cx="60" cy="60" r={radius} className="gauge-bg" />
+                            <circle cx="60" cy="60" r={radius} className="gauge-fill" style={{ stroke: color, strokeDasharray: circumference, strokeDashoffset: strokeDashoffset }} />
+                        </svg>
+                        <div className="gauge-text">
+                            <div className="text-lg font-bold" style={{ color }}>{displayValue}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const BudgetAdjustmentCard = ({ client }) => {
+            if (client.isHistorical) {
+                const diff = client.budget - client.total;
+                const under = diff >= 0;
+                return (
+                    <div className={`mt-4 p-4 rounded-lg border ${under ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
+                        <div className="flex justify-between font-bold">
+                            <span>{under ? 'Under Budget' : 'Over Budget'}</span>
+                            <span className={under ? 'text-blue-600' : 'text-red-600'}>{under ? '-' : '+'}{Math.abs(diff).toFixed(0)}</span>
+                        </div>
+                    </div>
+                );
+            }
+
+            const remaining = client.budget - client.total;
+            const targetDaily = Math.max(0, remaining / client.daysLeft);
+            const change = targetDaily - client.currentDailyBudget;
+            
+            // Logic to calculate split based on current configuration
+            let recGoogle = 0, recFB = 0;
+            const totalCurrent = client.googleDailyBudget + client.facebookDailyBudget;
+            
+            if (client.name === 'Brandon Trust') {
+                recFB = targetDaily;
+            } else if (totalCurrent > 0) {
+                const ratio = client.googleDailyBudget / totalCurrent;
+                recGoogle = targetDaily * ratio;
+                recFB = targetDaily * (1 - ratio);
+            } else {
+                recGoogle = targetDaily / 2;
+                recFB = targetDaily / 2;
+            }
+
+            let status = 'normal';
+            if (client.total >= client.budget) status = 'critical';
+            else if (Math.abs(change) < 5) status = 'optimal';
+            else if (change > 0) status = 'increase';
+            else status = 'decrease';
+
+            const bgClass = {
+                critical: 'bg-red-50 border-red-300 text-red-900',
+                increase: 'bg-blue-50 border-blue-300 text-blue-900',
+                decrease: 'bg-orange-50 border-orange-300 text-orange-900',
+                optimal: 'bg-green-50 border-green-300 text-green-900',
+                normal: 'bg-gray-50 border-gray-300 text-gray-900'
+            }[status];
+
+            return (
+                <div className={`mt-4 p-4 rounded-lg border-2 ${bgClass}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xl">{status === 'critical' ? '🚨' : status === 'optimal' ? '✅' : '⚙️'}</span>
+                        <div className="font-bold text-sm">
+                            {status === 'optimal' ? 'Budget On Track' : 'Adjustment Needed'}
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <div className="text-xs opacity-75">TOTAL DAILY</div>
+                            <div className="flex justify-between"><span>Current:</span><strong>£{client.currentDailyBudget.toFixed(0)}</strong></div>
+                            <div className="flex justify-between"><span>Target:</span><strong>£{targetDaily.toFixed(0)}</strong></div>
+                            <div className="flex justify-between border-t border-current pt-1 mt-1 font-bold">
+                                <span>Change:</span><span>{change > 0 ? '+' : ''}£{change.toFixed(0)}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-xs opacity-75">PLATFORMS</div>
+                            {recGoogle > 0 && <div className="flex justify-between text-xs"><span>Google:</span><span>£{recGoogle.toFixed(0)}</span></div>}
+                            {recFB > 0 && <div className="flex justify-between text-xs"><span>Meta:</span><span>£{recFB.toFixed(0)}</span></div>}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ClientCard = ({ client }) => {
+            const [expanded, setExpanded] = useState(false);
+            
+            // Determine KPI type
+            let kpiLabel = 'Conversions', kpiVal = client.conversions, kpiIcon = '🎯';
+            if (client.name.includes('Nursing')) { kpiLabel = 'Nurse Apps'; kpiVal = client.nursingConversions; kpiIcon = '👩‍⚕️'; }
+            else if (client.name.includes('Brandon')) { kpiLabel = 'Support Apps'; kpiVal = client.supportConversions + client.careConversions; kpiIcon = '📝'; }
+            else if (client.name.includes('Care') || client.name.includes('HC-One') || client.name.includes('Apollo')) { kpiLabel = 'Care Apps'; kpiVal = client.careConversions; kpiIcon = '🏥'; }
+
+            const cpa = kpiVal > 0 ? client.total / kpiVal : 0;
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="font-bold text-lg text-gray-900">{client.name}</h3>
+                            <div className="text-sm text-gray-500">{client.periodLabel}</div>
+                        </div>
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                            client.status === 'HOT' ? 'bg-red-100 text-red-800' : 
+                            client.status === 'COLD' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                        }`}>{client.status}</span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4 mb-4">
+                        <GaugeChart value={client.pctUsed} maxValue={100} color={client.pctUsed > 100 ? '#EF4444' : '#10B981'} label="Budget Usage" displayValue={`${client.pctUsed.toFixed(0)}%`} />
+                        <div className="bg-white p-4 rounded-lg border border-gray-200 text-center flex flex-col justify-center">
+                            <div className="text-xs font-medium text-gray-600 mb-2">Pace</div>
+                            <div className="text-2xl">{client.status === 'HOT' ? '🔥' : client.status === 'COLD' ? '🧊' : '✅'}</div>
+                        </div>
+                        <GaugeChart value={(client.projected / client.budget) * 100} maxValue={130} color="#3B82F6" label="Projected" displayValue={`£${client.projected.toFixed(0)}`} />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                        <KPIScorecard label={kpiLabel} value={Math.floor(kpiVal)} icon={kpiIcon} performance="average" />
+                        <KPIScorecard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : 'N/A'} icon="💰" performance={cpa < 50 ? 'good' : 'average'} />
+                        <KPIScorecard label="CTR" value={`${client.ctr.toFixed(2)}`} unit="%" icon="👆" performance="good" />
+                    </div>
+
+                    <BudgetAdjustmentCard client={client} />
+
+                    <div className="mt-4 pt-4 border-t">
+                        <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-between w-full text-sm text-gray-500 hover:text-gray-800">
+                            <span>Details</span><span>{expanded ? '▲' : '▼'}</span>
+                        </button>
+                        {expanded && (
+                            <div className="mt-3 space-y-2 text-sm text-gray-600">
+                                <div className="flex justify-between"><span>Total Spend:</span><strong>£{client.total.toFixed(2)}</strong></div>
+                                <div className="flex justify-between"><span>Budget:</span><strong>£{client.budget}</strong></div>
+                                <div className="flex justify-between"><span>Daily Budget (Platform):</span><strong>£{client.currentDailyBudget.toFixed(0)}</strong></div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const Dashboard = () => {
+            const [data, setData] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [month, setMonth] = useState('current');
+            
+            const PROXY = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
+            const SHEET_ID = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
+            const KEY = 'AIzaSyDffl5VtZDXxAMJ-Cnbay7CbO-PPfF42fI';
+
+            const getDates = (type, sel) => {
+                const now = new Date();
+                let y = now.getFullYear(), m = now.getMonth();
+                if (sel !== 'current') {
+                    const parts = sel.split('-');
+                    y = parseInt(parts[0]); m = parseInt(parts[1]) - 1;
+                }
+                const make = (d) => new Date(y, m, d);
+                const makePrev = (d) => new Date(y, m - 1, d);
+
+                if (type === 'apollo') {
+                    if (sel === 'current' && now.getDate() >= 26) return { start: make(26), end: new Date(y, m + 1, 25) };
+                    return { start: makePrev(26), end: make(25) };
+                }
+                if (type === 'brandon') {
+                    if (sel === 'current' && now.getDate() >= 21) return { start: make(21), end: new Date(y, m + 1, 20) };
+                    return { start: makePrev(21), end: make(20) };
+                }
+                if (type === 'hc1') {
+                    if (sel === 'current' && now.getDate() >= 11) return { start: make(11), end: new Date(y, m + 1, 10) };
+                    return { start: makePrev(11), end: make(10) };
+                }
+                return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) };
+            };
+
+            // ORIGINAL PERMISSIVE MAPPER
+            const mapRow = (headers, row) => {
+                const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '' };
+                headers.forEach((h, i) => {
+                    if (!h || !row[i]) return;
+                    const val = row[i];
+                    const header = h.trim().toLowerCase();
+                    
+                    if (header === 'date' || header === 'day') obj.Date = parseSheetDate(val);
+                    else if (header.includes('adset name')) obj.Adset = val;
+                    else {
+                        const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
+                        if (!isNaN(num)) {
+                            // Spend
+                            if (header === 'cost' || header.includes('amount spent')) obj.Cost = num;
+                            // Budget
+                            else if (header.includes('budget')) obj.DailyBudget = num;
+                            // CTR
+                            else if (header.includes('ctr')) obj.CTR = num;
+                            // Conversions
+                            else if (header.includes('conversion') || header.includes('application')) {
+                                if (!header.includes('cost') && !header.includes('rate')) {
+                                    if (header.includes('nurse')) obj.NurseApps = num;
+                                    else if (header.includes('support')) obj.SupportApps = num;
+                                    else obj.CareApps = num;
+                                }
+                            }
+                        }
+                    }
+                });
+                return obj;
+            };
+
+            const load = async () => {
+                setLoading(true);
+                try {
+                    const cfgRes = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=Config!A:F&apiKey=${KEY}`);
+                    const cfgJson = await cfgRes.json();
+                    const clients = cfgJson.values.slice(1).map(r => ({
+                        name: r[0], budget: parseFloat(r[1].replace(/,/g, '')), type: r[2], prefix: r[3] || r[0], skip: r[4] === 'TRUE', camps: r[5] ? r[5].split(',') : []
+                    }));
+
+                    const results = await Promise.all(clients.map(async client => {
+                        const dates = getDates(client.type, month);
+                        const label = `${dates.start.toLocaleDateString()} - ${dates.end.toLocaleDateString()}`;
+                        let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
+                        
+                        // ORIGINAL BUDGET LOGIC: Just take the last valid budget found in the array
+                        // This fixes the "zero budget" error because it doesn't require date matching
+                        let lastGoogleBudget = 0;
+                        let lastFBBudgets = new Map();
+
+                        const fetchTab = async (suffix) => {
+                            try {
+                                const range = (client.prefix + ' ' + suffix).includes('FB') ? `${client.prefix} ${suffix}!A:H` : `${client.prefix} ${suffix}!A:F`;
+                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
+                                const json = await res.json();
+                                if (json.values) {
+                                    const h = json.values[0];
+                                    const rows = json.values.slice(1).map(r => mapRow(h, r)).filter(d => d.Date); // Sort by date
+                                    rows.sort((a, b) => a.Date - b.Date);
+
+                                    rows.forEach(d => {
+                                        if (d.Date >= dates.start && d.Date <= dates.end) {
+                                            stats.total += d.Cost;
+                                            if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
+                                            stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
+                                        }
+                                        // Capture latest budget (GLOBAL)
+                                        if (d.DailyBudget > 0) {
+                                            if (suffix === 'Google') lastGoogleBudget = d.DailyBudget; // Simply take last row
+                                            if (suffix === 'FB') lastFBBudgets.set(d.Adset, d.DailyBudget);
+                                        }
+                                    });
+                                }
+                            } catch(e) {}
+                        };
+
+                        if (!client.skip) { await fetchTab('Google'); await fetchTab('FB'); }
+                        
+                        // Conversion Tab Logic
+                        try {
+                            const convRes = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=${encodeURIComponent(client.prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
+                            const convJson = await convRes.json();
+                            if (convJson.values) {
+                                const h = convJson.values[0];
+                                convJson.values.slice(1).forEach(r => {
+                                    const d = mapRow(h, r);
+                                    if (d.Date && d.Date >= dates.start && d.Date <= dates.end) {
+                                        stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps;
+                                    }
+                                });
+                            }
+                        } catch(e) {}
+
+                        // Calculations
+                        let fbDailyTotal = 0;
+                        lastFBBudgets.forEach(v => fbDailyTotal += v);
+                        const dailyBudget = lastGoogleBudget + fbDailyTotal; // Original Logic restored
+
+                        const today = new Date();
+                        const daysTotal = Math.ceil((dates.end - dates.start) / 86400000);
+                        const daysElapsed = Math.min(daysTotal, Math.ceil((today - dates.start) / 86400000));
+                        const daysLeft = Math.max(0, daysTotal - daysElapsed);
+                        
+                        const avgSpend = daysElapsed > 0 ? stats.total / daysElapsed : 0;
+                        const projected = stats.total + (avgSpend * daysLeft);
+                        const pctUsed = (stats.total / client.budget) * 100;
+                        
+                        let status = 'ON TRACK';
+                        if (projected > client.budget * 1.05) status = 'HOT';
+                        else if (projected < client.budget * 0.95) status = 'COLD';
+                        if (stats.total >= client.budget) status = 'OVER BUDGET';
+
+                        return {
+                            ...client, ...stats, periodLabel: label, daysLeft, projected, pctUsed, status,
+                            currentDailyBudget: dailyBudget,
+                            googleDailyBudget: lastGoogleBudget,
+                            facebookDailyBudget: fbDailyTotal,
+                            conversions: stats.careApps + stats.nurseApps + stats.supportApps,
+                            careConversions: stats.careApps, nursingConversions: stats.nurseApps, supportConversions: stats.supportApps,
+                            ctr: stats.ctrCount > 0 ? stats.ctrSum / stats.ctrCount : 0,
+                            isHistorical: month !== 'current'
+                        };
+                    }));
+                    setData(results);
+                } catch (e) { console.error(e); }
+                setLoading(false);
+            };
+
+            useEffect(() => { load(); }, [month]);
+
+            return (
+                <div className="max-w-7xl mx-auto">
+                    <div className="flex justify-between items-center mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Client Budgets</h1>
+                        <div className="flex gap-4">
+                            <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={[
+                                {value:'current', label:'Current'}, {value:'2025-11', label:'Nov 2025'}, {value:'2025-10', label:'Oct 2025'}
+                            ]} />
+                            <button onClick={load} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Refresh</button>
+                        </div>
+                    </div>
+                    {loading && <div className="text-center py-12 text-gray-500">Loading...</div>}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {data.map(c => <ClientCard key={c.name} client={c} />)}
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Dashboard />);
+    </script>
 </body>
 </html>
