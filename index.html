@@ -23,7 +23,6 @@
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val);
 
-        // Normalize text: lowercase, fix dashes, remove extra spaces
         const normalize = (text) => {
             if (!text) return '';
             return text.toLowerCase()
@@ -37,17 +36,14 @@
         const parseSheetDate = (dateStr) => {
             if (!dateStr) return null;
             const s = String(dateStr).trim();
-            // ISO (2025-01-01)
             const iso = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
             if (iso) return new Date(iso[1], iso[2] - 1, iso[3]);
-            // UK (01/01/2025)
             const uk = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
             if (uk) return new Date(uk[3], uk[2] - 1, uk[1]);
             const d = new Date(s);
             return isNaN(d.getTime()) ? null : d;
         };
 
-        // --- MAPPER ---
         const mapRow = (headers, row) => {
             const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', RawCare: 0 };
             headers.forEach((h, i) => {
@@ -62,28 +58,21 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
-                        // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
-                            // FB Pence Fix: If value > 500 (e.g. 1280), assume pence -> £12.80
                             if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
-                        // BUDGET
                         else if (lower.includes('budget')) {
-                            if (lower.includes('adset')) obj.DailyBudget = num / 100; // FB Pence
-                            else obj.DailyBudget = num; // Google Pounds
+                            if (lower.includes('adset')) obj.DailyBudget = num / 100;
+                            else obj.DailyBudget = num;
                         }
-                        // CTR
                         else if (lower.includes('ctr')) obj.CTR = num;
-                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
-                                else if (header.includes('Support Worker')) obj.SupportApps = num;
-                                else if (header.includes('Care') || lower.includes('care')) {
-                                    obj.RawCare = num;
-                                    // ANTI-INFLATION: Ignore values > 5 (Likely Currency, not Count)
-                                    if (num <= 5) obj.CareApps = num;
+                                if (num < 20) {
+                                    if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
+                                    else if (header.includes('Support Worker')) obj.SupportApps = num;
+                                    else if (header.includes('Care') || lower.includes('care')) obj.CareApps = num;
                                 }
                             }
                         }
@@ -94,7 +83,6 @@
         };
 
         // --- COMPONENTS ---
-
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
@@ -109,7 +97,6 @@
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Campaign</th>
                                     <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Raw</th>
                                     <th className="pb-2 text-right">Counted</th>
                                     <th className="pb-2 pl-4">Note</th>
                                 </tr>
@@ -122,7 +109,6 @@
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
                                         <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
                                         <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
                                     </tr>
@@ -180,18 +166,26 @@
             );
         };
 
-        const Gauge = ({ pct, label, sub, color }) => {
+        // UPDATED GAUGE COMPONENT
+        const Gauge = ({ pct, label, sub, color, detail }) => {
             const r = 40, c = 2 * Math.PI * r;
             const off = c - (Math.min(pct, 100) / 100) * c;
             return (
-                <div className="flex flex-col items-center justify-center relative">
+                <div className="flex flex-col items-center">
                     <div className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</div>
-                    <svg width="96" height="96" className="-rotate-90">
-                        <circle cx="48" cy="48" r={r} stroke="#e2e8f0" strokeWidth="8" fill="none" />
-                        <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
-                            style={{ strokeDasharray: c, strokeDashoffset: off }} className="gauge-fill" />
-                    </svg>
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pt-4 font-bold text-gray-700">{sub}</div>
+                    <div className="relative flex items-center justify-center">
+                        <svg width="96" height="96" className="-rotate-90 transform">
+                            <circle cx="48" cy="48" r={r} stroke="#e2e8f0" strokeWidth="8" fill="none" />
+                            <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
+                                style={{ strokeDasharray: c, strokeDashoffset: off }} className="gauge-fill" />
+                        </svg>
+                        <div className="absolute font-bold text-gray-700 text-lg">{sub}</div>
+                    </div>
+                    {detail && (
+                        <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">
+                            {detail}
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -299,7 +293,14 @@
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 mb-6">
-                        <Gauge pct={client.pctUsed} label="Budget" sub={`${client.pctUsed.toFixed(0)}%`} color={client.pctUsed > 100 ? '#ef4444' : '#10b981'} />
+                        {/* UPDATED: Passed detail prop to Gauge */}
+                        <Gauge 
+                            pct={client.pctUsed} 
+                            label="Budget" 
+                            sub={`${client.pctUsed.toFixed(0)}%`} 
+                            color={client.pctUsed > 100 ? '#ef4444' : '#10b981'}
+                            detail={`${formatMoney(client.total)} / ${formatMoney(client.budget)}`} 
+                        />
                         <div className="flex flex-col items-center justify-center p-2 bg-gray-50 rounded-xl border border-gray-100">
                             <div className="text-xs font-bold text-gray-400 uppercase mb-2">Pace</div>
                             <div className="text-3xl">{client.status === 'HOT' ? '🔥' : client.status === 'COLD' ? '🧊' : '✅'}</div>
@@ -393,3 +394,194 @@
                     }));
 
                     const prefixes = [...new Set(clients.map(c => c.prefix))];
+                    const cache = {};
+                    let maxTs = 0;
+
+                    await Promise.all(prefixes.map(async prefix => {
+                        const fetchRange = async (suffix) => {
+                            try {
+                                const range = (prefix + ' ' + suffix).includes('FB') ? `${prefix} ${suffix}!A:H` : `${prefix} ${suffix}!A:F`;
+                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
+                                const json = await res.json();
+                                if (json.values) cache[`${prefix} ${suffix}`] = json.values;
+                            } catch(e) {}
+                        };
+                        const fetchConv = async () => {
+                            try {
+                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
+                                const json = await res.json();
+                                if (json.values) cache[`${prefix} Google Conversions`] = json.values;
+                            } catch(e) {}
+                        };
+                        await Promise.all([fetchRange('Google'), fetchRange('FB'), fetchConv()]);
+                    }));
+
+                    Object.values(cache).forEach(rows => {
+                        if (!rows || rows.length < 2) return;
+                        const h = rows[0];
+                        rows.slice(1).forEach(r => {
+                            const d = mapRow(h, r);
+                            if (d.Date && d.Date.getTime() > maxTs) maxTs = d.Date.getTime();
+                        });
+                    });
+                    
+                    if (maxTs > 0) setLatestDataDate(new Date(maxTs));
+
+                    const tempLogs = [];
+
+                    const results = clients.map(client => {
+                        const currentRef = maxTs > 0 ? new Date(maxTs) : new Date();
+                        const dates = getDates(client.type, month);
+                        const label = `${dates.start.toLocaleDateString('en-GB')} - ${dates.end.toLocaleDateString('en-GB')}`;
+                        
+                        let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
+                        let prev = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
+                        
+                        let gBudgets = new Map(), fBudgets = new Map();
+                        let maxDateG = 0, maxDateF = 0;
+
+                        const processTab = (tabName, isConv = false) => {
+                            const rows = cache[tabName];
+                            if (!rows) return;
+                            const h = rows[0];
+                            rows.slice(1).forEach(r => {
+                                const d = mapRow(h, r);
+                                if (!d.Date) return;
+                                
+                                const rowText = normalize(d.Campaign + ' ' + d.Adset);
+                                const match = client.camps.includes('*') || client.camps.some(c => rowText.includes(normalize(c)));
+                                if (!match) return;
+
+                                if (client.name.includes('England/Wales')) {
+                                    const regions = ['Midlands', 'North East', 'North West', 'Scotland', 'South', 'Yorkshire', 'Humber'];
+                                    if (regions.some(reg => rowText.includes(normalize(reg)))) return;
+                                }
+
+                                const inCurrent = d.Date >= dates.start && d.Date <= dates.end;
+                                
+                                if (inCurrent && (d.Cost > 0 || d.CareApps > 0 || d.NurseApps > 0 || d.RawCare > 0)) {
+                                    tempLogs.push({
+                                        client: client.name,
+                                        tab: tabName,
+                                        date: d.Date.toLocaleDateString('en-GB'),
+                                        camp: d.Campaign || d.Adset,
+                                        spend: d.Cost,
+                                        careApps: d.CareApps,
+                                        rawCare: d.RawCare,
+                                        note: isConv ? 'From Conversion Tab' : d.RawCare > 5 ? 'Ignored High Value' : 'Matched'
+                                    });
+                                }
+
+                                if (inCurrent) {
+                                    if (isConv) { stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; }
+                                    else {
+                                        stats.total += d.Cost;
+                                        if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
+                                        stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
+                                    }
+                                }
+
+                                if (d.Date >= dates.prevStart && d.Date <= dates.prevEnd) {
+                                    if (isConv) { prev.careApps += d.CareApps; prev.nurseApps += d.NurseApps; }
+                                    else {
+                                        prev.total += d.Cost;
+                                        if (d.CTR > 0) { prev.ctrSum += d.CTR; prev.ctrCount++; }
+                                        prev.careApps += d.CareApps; prev.nurseApps += d.NurseApps; prev.supportApps += d.SupportApps;
+                                    }
+                                }
+
+                                if (d.DailyBudget > 0 && !isConv) {
+                                    const t = d.Date.getTime();
+                                    if (tabName.includes('Google')) {
+                                        if (t > maxDateG) { maxDateG = t; gBudgets.clear(); }
+                                        if (t === maxDateG) gBudgets.set(normalize(d.Campaign)||'def', d.DailyBudget);
+                                    } else {
+                                        if (t > maxDateF) { maxDateF = t; fBudgets.clear(); }
+                                        if (t === maxDateF) fBudgets.set(normalize(d.Adset)||'def', d.DailyBudget);
+                                    }
+                                }
+                            });
+                        };
+
+                        processTab(`${client.prefix} Google`);
+                        processTab(`${client.prefix} FB`);
+                        processTab(`${client.prefix} Google Conversions`, true);
+
+                        let gDaily = 0, fDaily = 0;
+                        gBudgets.forEach(v => gDaily += v);
+                        fBudgets.forEach(v => fDaily += v);
+
+                        const today = currentRef;
+                        const daysTotal = Math.ceil((dates.end - dates.start) / 86400000);
+                        const passed = Math.max(1, Math.min(daysTotal, Math.ceil((today - dates.start) / 86400000)));
+                        const left = Math.max(0, daysTotal - passed);
+                        
+                        const avg = passed > 0 ? stats.total / passed : 0;
+                        const proj = stats.total + (avg * left);
+                        
+                        let status = 'ON TRACK';
+                        if (proj > client.budget * 1.05) status = 'HOT';
+                        else if (proj < client.budget * 0.95) status = 'COLD';
+                        if (stats.total >= client.budget) status = 'OVER BUDGET';
+
+                        return {
+                            ...client, ...stats, periodLabel: label, daysLeft: left, projected: proj, pctUsed: (stats.total/client.budget)*100, status,
+                            currentDailyBudget: gDaily + fDaily,
+                            googleDailyBudget: gDaily, facebookDailyBudget: fDaily,
+                            conversions: stats.careApps + stats.nurseApps + stats.supportApps,
+                            careConversions: stats.careApps, nursingConversions: stats.nurseApps, supportConversions: stats.supportApps,
+                            ctr: stats.ctrCount > 0 ? (stats.ctrSum / stats.ctrCount).toFixed(2) : 0,
+                            isHistorical: month !== 'current' && month !== 'last30',
+                            prev: {
+                                total: prev.total,
+                                conversions: prev.careApps + prev.nurseApps + prev.supportApps,
+                                careConversions: prev.careApps, nursingConversions: prev.nurseApps, supportConversions: prev.supportApps,
+                                ctr: prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount).toFixed(2) : 0
+                            }
+                        };
+                    });
+                    
+                    setDebugLogs(tempLogs);
+                    setData(results);
+                } catch(e) { console.error(e); }
+                setLoading(false);
+            };
+
+            useEffect(() => { load(); }, [month]);
+
+            const months = [
+                {value:'current', label:'Current Period'}, 
+                {value:'last30', label:'Last 30 Days'},
+                {value:'2025-11', label:'Nov 2025'}, 
+                {value:'2025-10', label:'Oct 2025'}
+            ];
+
+            return (
+                <div className="max-w-7xl mx-auto">
+                    <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+                        <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Client Budgets</h1>
+                        <div className="flex gap-4">
+                            <button onClick={() => setDebug(!debug)} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${debug ? 'bg-red-600 text-white border-red-600' : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'}`}>
+                                {debug ? 'Debug ON' : 'Debug OFF'}
+                            </button>
+                            <MonthSelector selectedMonth={month} onMonthChange={setMonth} availableMonths={months} />
+                            <button onClick={load} className="bg-slate-900 text-white px-5 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors shadow-sm">Refresh</button>
+                        </div>
+                    </div>
+                    
+                    {loading && <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+                        {data.map(c => <ClientCard key={c.name} client={c} />)}
+                    </div>
+
+                    {debug && <DebugPanel logs={debugLogs} />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Dashboard />);
+    </script>
+</body>
+</html>
