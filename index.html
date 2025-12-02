@@ -30,18 +30,17 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useCallback } = React;
 
-        // --- HELPERS FROM ORIGINAL LOGIC ---
+        // --- HELPERS ---
         
         const parseSheetDate = (dateStr) => {
             if (!dateStr) return null;
             const cleanStr = String(dateStr).trim();
-            // Handle ISO (2025-01-01) - Seen in your file
+            // Handle ISO (2025-01-01)
             const isoMatch = cleanStr.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
             if (isoMatch) return new Date(isoMatch[1], isoMatch[2] - 1, isoMatch[3]);
             // Handle UK (01/01/2025)
             const ukMatch = cleanStr.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
             if (ukMatch) return new Date(ukMatch[3], ukMatch[2] - 1, ukMatch[1]);
-            // Fallback
             const d = new Date(cleanStr);
             return isNaN(d.getTime()) ? null : d;
         };
@@ -131,11 +130,11 @@
             const targetDaily = Math.max(0, remaining / client.daysLeft);
             const change = targetDaily - client.currentDailyBudget;
             
-            // Logic to calculate split based on current configuration
             let recGoogle = 0, recFB = 0;
             const totalCurrent = client.googleDailyBudget + client.facebookDailyBudget;
             
-            if (client.name === 'Brandon Trust') {
+            // Logic for Brandon Trust (FB Only) or Split
+            if (client.name.includes('Brandon')) {
                 recFB = targetDaily;
             } else if (totalCurrent > 0) {
                 const ratio = client.googleDailyBudget / totalCurrent;
@@ -190,7 +189,6 @@
         const ClientCard = ({ client }) => {
             const [expanded, setExpanded] = useState(false);
             
-            // Determine KPI type
             let kpiLabel = 'Conversions', kpiVal = client.conversions, kpiIcon = '🎯';
             if (client.name.includes('Nursing')) { kpiLabel = 'Nurse Apps'; kpiVal = client.nursingConversions; kpiIcon = '👩‍⚕️'; }
             else if (client.name.includes('Brandon')) { kpiLabel = 'Support Apps'; kpiVal = client.supportConversions + client.careConversions; kpiIcon = '📝'; }
@@ -278,7 +276,6 @@
                 return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) };
             };
 
-            // ORIGINAL PERMISSIVE MAPPER
             const mapRow = (headers, row) => {
                 const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '' };
                 headers.forEach((h, i) => {
@@ -291,13 +288,19 @@
                     else {
                         const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                         if (!isNaN(num)) {
-                            // Spend
                             if (header === 'cost' || header.includes('amount spent')) obj.Cost = num;
-                            // Budget
-                            else if (header.includes('budget')) obj.DailyBudget = num;
-                            // CTR
+                            
+                            // BUDGET FIX: Detect if it's "Adset daily budget" (Meta) vs "Budget Amount" (Google)
+                            else if (header.includes('budget')) {
+                                if (header.includes('adset daily budget')) {
+                                    // Meta exports budget in pence/cents (e.g. 800 = £8.00)
+                                    obj.DailyBudget = num / 100;
+                                } else {
+                                    // Google exports budget in pounds (e.g. 29 = £29.00)
+                                    obj.DailyBudget = num;
+                                }
+                            }
                             else if (header.includes('ctr')) obj.CTR = num;
-                            // Conversions
                             else if (header.includes('conversion') || header.includes('application')) {
                                 if (!header.includes('cost') && !header.includes('rate')) {
                                     if (header.includes('nurse')) obj.NurseApps = num;
@@ -325,8 +328,6 @@
                         const label = `${dates.start.toLocaleDateString()} - ${dates.end.toLocaleDateString()}`;
                         let stats = { total: 0, ctrSum: 0, ctrCount: 0, careApps: 0, nurseApps: 0, supportApps: 0 };
                         
-                        // ORIGINAL BUDGET LOGIC: Just take the last valid budget found in the array
-                        // This fixes the "zero budget" error because it doesn't require date matching
                         let lastGoogleBudget = 0;
                         let lastFBBudgets = new Map();
 
@@ -337,7 +338,7 @@
                                 const json = await res.json();
                                 if (json.values) {
                                     const h = json.values[0];
-                                    const rows = json.values.slice(1).map(r => mapRow(h, r)).filter(d => d.Date); // Sort by date
+                                    const rows = json.values.slice(1).map(r => mapRow(h, r)).filter(d => d.Date);
                                     rows.sort((a, b) => a.Date - b.Date);
 
                                     rows.forEach(d => {
@@ -346,9 +347,8 @@
                                             if (d.CTR > 0) { stats.ctrSum += d.CTR; stats.ctrCount++; }
                                             stats.careApps += d.CareApps; stats.nurseApps += d.NurseApps; stats.supportApps += d.SupportApps;
                                         }
-                                        // Capture latest budget (GLOBAL)
                                         if (d.DailyBudget > 0) {
-                                            if (suffix === 'Google') lastGoogleBudget = d.DailyBudget; // Simply take last row
+                                            if (suffix === 'Google') lastGoogleBudget = d.DailyBudget; 
                                             if (suffix === 'FB') lastFBBudgets.set(d.Adset, d.DailyBudget);
                                         }
                                     });
@@ -358,7 +358,6 @@
 
                         if (!client.skip) { await fetchTab('Google'); await fetchTab('FB'); }
                         
-                        // Conversion Tab Logic
                         try {
                             const convRes = await fetch(`${PROXY}?spreadsheetId=${SHEET_ID}&range=${encodeURIComponent(client.prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
                             const convJson = await convRes.json();
@@ -373,10 +372,9 @@
                             }
                         } catch(e) {}
 
-                        // Calculations
                         let fbDailyTotal = 0;
                         lastFBBudgets.forEach(v => fbDailyTotal += v);
-                        const dailyBudget = lastGoogleBudget + fbDailyTotal; // Original Logic restored
+                        const dailyBudget = lastGoogleBudget + fbDailyTotal;
 
                         const today = new Date();
                         const daysTotal = Math.ceil((dates.end - dates.start) / 86400000);
