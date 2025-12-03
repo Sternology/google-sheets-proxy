@@ -21,13 +21,14 @@
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
 
-        /* Graph Animation - Fixed to be solid lines */
+        /* Graph Animation */
         .draw-path {
-            stroke-dasharray: 2000; /* Large enough to cover any line length */
-            stroke-dashoffset: 2000;
-            animation: draw 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+            stroke-dasharray: 1;
+            stroke-dashoffset: 1;
+            animation: draw 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
         @keyframes draw {
+            from { stroke-dashoffset: 1; }
             to { stroke-dashoffset: 0; }
         }
     </style>
@@ -106,27 +107,31 @@
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
-                <div className="mt-8 bg-slate-800 text-slate-300 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
-                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
+                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Debug Analysis Log</h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="text-slate-500">
                                     <th className="pb-2">Client</th>
+                                    <th className="pb-2">Source</th>
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Campaign</th>
                                     <th className="pb-2 text-right">Spend</th>
                                     <th className="pb-2 text-right">Counted</th>
+                                    <th className="pb-2 pl-4">Note</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-700">
+                            <tbody className="divide-y divide-slate-800">
                                 {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-700">
+                                    <tr key={i} className="hover:bg-slate-800">
                                         <td className="py-2 text-blue-400">{log.client}</td>
+                                        <td className="py-2 opacity-70">{log.tab}</td>
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
                                         <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -145,15 +150,20 @@
             </div>
         );
 
+        // UPDATED: Trend Chart with Slice logic
         const TrendChart = ({ dailyData }) => {
             const [expanded, setExpanded] = useState(false);
             const [visible, setVisible] = useState({ conv: true, cpa: true, ctr: true });
             const [hoverIndex, setHoverIndex] = useState(null);
             const containerRef = useRef(null);
 
-            if (!dailyData || dailyData.length < 2) return null;
+            // Logic: Need at least 2 points AFTER removing today
+            if (!dailyData || dailyData.length < 3) return null;
 
-            const data = [...dailyData].sort((a,b) => a.date - b.date);
+            // 1. Sort by Date
+            // 2. REMOVE THE LAST ITEM (Today) using .slice(0, -1)
+            const data = [...dailyData].sort((a,b) => a.date - b.date).slice(0, -1);
+            
             const width = 100;
             const height = 40;
 
@@ -690,7 +700,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 
                         }));
 
                         let gDaily = 0, fDaily = 0;
