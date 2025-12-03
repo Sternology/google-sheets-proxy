@@ -10,17 +10,27 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; font-family: -apple-system, system-ui, sans-serif; }
+        
+        /* Transitions */
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
+        .transition-all { transition: all 0.3s ease; }
+        
+        /* Card Flip */
         .perspective-1000 { perspective: 1000px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
+
+        /* Graph Animation */
         .draw-path {
             stroke-dasharray: 1;
             stroke-dashoffset: 1;
             animation: draw 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
-        @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+        @keyframes draw {
+            from { stroke-dashoffset: 1; }
+            to { stroke-dashoffset: 0; }
+        }
     </style>
 </head>
 <body class="p-6">
@@ -63,21 +73,22 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
+                        // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
                             if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
+                        // BUDGET
                         else if (lower.includes('budget')) {
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
+                        // CTR (Fixed Logic: Normalize 0.034 -> 3.4, leave 3.4 as 3.4)
                         else if (lower.includes('ctr')) {
-                            // CTR NORMALIZATION FIX:
-                            // If value > 1 (e.g. 3.4), assume it's already %, keep as 3.4
-                            // If value <= 1 (e.g. 0.034), assume decimal, convert to 3.4
-                            if (num > 1) obj.CTR = num;
-                            else obj.CTR = num * 100;
+                            if (num <= 1) obj.CTR = num * 100;
+                            else obj.CTR = num;
                         }
+                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
                                 if (num < 20) {
@@ -100,8 +111,8 @@
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
-                <div className="mt-8 bg-slate-800 text-slate-300 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
-                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
+                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Debug Analysis Log</h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
@@ -111,14 +122,14 @@
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Campaign</th>
                                     <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Raw</th>
+                                    <th className="pb-2 text-right">Raw Care</th>
                                     <th className="pb-2 text-right">Counted</th>
                                     <th className="pb-2 pl-4">Note</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-700">
+                            <tbody className="divide-y divide-slate-800">
                                 {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-700">
+                                    <tr key={i} className="hover:bg-slate-800">
                                         <td className="py-2 text-blue-400">{log.client}</td>
                                         <td className="py-2 opacity-70">{log.tab}</td>
                                         <td className="py-2">{log.date}</td>
@@ -191,16 +202,9 @@
                                     </>
                                 )}
                             </svg>
-
                             <div className="flex justify-between text-[8px] text-gray-400 mt-2 font-mono">
                                 <span>{data[0].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
                                 <span>{data[data.length-1].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
-                            </div>
-
-                            <div className="flex justify-center gap-3 mt-2">
-                                <div className="flex items-center text-[9px] font-bold text-emerald-600"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1"></div>Conv</div>
-                                <div className="flex items-center text-[9px] font-bold text-blue-600"><div className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1"></div>CPA</div>
-                                <div className="flex items-center text-[9px] font-bold text-orange-500"><div className="w-1.5 h-1.5 rounded-full bg-orange-500 mr-1"></div>CTR</div>
                             </div>
                         </div>
                     </div>
@@ -216,36 +220,41 @@
                 orange: "bg-orange-50 text-orange-700 border-orange-200"
             }[color] || "bg-gray-50 text-gray-700";
 
-            let trendColor = "text-gray-500 bg-gray-100";
+            let trendColor = "bg-gray-100 text-gray-600";
             let arrow = "→";
             
             if (trend !== undefined && trend !== null && !isNaN(trend) && isFinite(trend)) {
                 const isPositive = trend > 0;
                 arrow = isPositive ? "↑" : "↓";
                 const isCPA = label.includes('CPA') || label.includes('Cost');
-                if (isCPA) trendColor = isPositive ? "text-red-700 bg-red-100" : "text-emerald-700 bg-emerald-100";
-                else trendColor = isPositive ? "text-emerald-700 bg-emerald-100" : "text-red-700 bg-red-100";
+                if (isCPA) trendColor = isPositive ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700";
+                else trendColor = isPositive ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700";
             }
             
             return (
                 <div className="perspective-1000 h-32 cursor-pointer group" onClick={() => setFlipped(!flipped)}>
                     <div className={`relative w-full h-full transition-transform duration-500 transform-style-3d ${flipped ? 'rotate-y-180' : ''}`}>
-                        <div className={`absolute w-full h-full backface-hidden p-4 rounded-xl border ${theme} flex flex-col justify-center shadow-sm group-hover:shadow-md`}>
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="flex items-center gap-2 opacity-90">
+                        {/* FRONT */}
+                        <div className={`absolute w-full h-full backface-hidden p-4 rounded-xl border ${theme} flex flex-col justify-between shadow-sm group-hover:shadow-md`}>
+                            <div>
+                                <div className="flex items-center gap-2 opacity-90 mb-1">
                                     <span className="text-xl">{icon}</span>
                                     <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
                                 </div>
-                                {trend !== undefined && !isNaN(trend) && isFinite(trend) && (
-                                    <div className={`text-xs font-bold px-2 py-1 rounded-full ${trendColor}`}>
-                                        {arrow} {Math.abs(trend).toFixed(0)}%
-                                    </div>
-                                )}
+                                <div className="text-2xl font-bold">{value}</div>
                             </div>
-                            <div className="text-2xl font-bold">{value}</div>
-                            {prevValue && <div className="text-xs opacity-60 mt-1 font-medium">vs {prevValue} prev</div>}
-                            <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px]">↻</div>
+                            
+                            {/* Comparison Badge at Bottom */}
+                            {trend !== undefined && !isNaN(trend) && isFinite(trend) && (
+                                <div className={`w-full py-1.5 px-2 rounded text-xs font-bold flex items-center justify-between ${trendColor}`}>
+                                    <span className="flex items-center gap-1">{arrow} {Math.abs(trend).toFixed(0)}%</span>
+                                    <span className="opacity-60 font-normal">vs prev</span>
+                                </div>
+                            )}
+                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px]">↻</div>
                         </div>
+
+                        {/* BACK */}
                         <div className="absolute w-full h-full backface-hidden rotate-y-180 p-4 rounded-xl border bg-white border-gray-200 flex flex-col justify-center shadow-sm">
                             <div className="text-xs font-bold uppercase text-gray-400 mb-2 text-center">{label} Split</div>
                             <div className="grid grid-cols-2 gap-2 text-center">
@@ -278,7 +287,11 @@
                         </svg>
                         <div className="absolute font-bold text-gray-700 text-lg">{sub}</div>
                     </div>
-                    {detail && <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">{detail}</div>}
+                    {detail && (
+                        <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">
+                            {detail}
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -372,7 +385,6 @@
             const cpaTrend = calcTrend(cpa, prevCpa);
             const ctrTrend = calcTrend(client.ctr, client.prev.ctr);
 
-            // Split Calcs for Flip Cards
             let gVal = 0, fVal = 0;
             if(client.name.includes('Nursing')){ gVal=client.gNurse; fVal=client.fNurse; }
             else if(client.name.includes('Brandon')){ gVal=client.gSupport; fVal=client.fSupport; }
@@ -408,7 +420,7 @@
                     <div className="grid grid-cols-3 gap-3">
                         <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
                         <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
-                        <KPICard label="CTR" value={`${client.ctr.toFixed(0)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(0)}%` : null} details={{ google: `${gCtr.toFixed(0)}%`, facebook: `${fCtr.toFixed(0)}%` }} />
+                        <KPICard label="CTR" value={`${client.ctr.toFixed(0)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(0)}%` : null} details={{ google: `${(gCtr).toFixed(0)}%`, facebook: `${(fCtr).toFixed(0)}%` }} />
                     </div>
                     
                     <TrendChart dailyData={client.dailyData} />
@@ -535,8 +547,6 @@
                         let maxDateG = 0, maxDateF = 0;
                         
                         const dailyMap = new Map();
-
-                        // GAP FILLING: Initialize map with zeros for every day in range
                         let iter = new Date(dates.start);
                         const endLimit = (month === 'current' || month === 'last30') ? currentRef : dates.end;
                         
@@ -625,7 +635,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 // Keep as decimal here
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 
                         }));
 
                         let gDaily = 0, fDaily = 0;
@@ -648,7 +658,7 @@
 
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
-                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) * 100 : 0;
+                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) : 0;
 
                         return {
                             ...client, 
@@ -668,7 +678,7 @@
                             careConversions: g.care + f.care,
                             nursingConversions: g.nurse + f.nurse,
                             supportConversions: g.support + f.support,
-                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) * 100 : 0,
+                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) : 0,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
