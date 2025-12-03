@@ -10,25 +10,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; font-family: -apple-system, system-ui, sans-serif; }
-        
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
-        
-        /* Card Flip */
         .perspective-1000 { perspective: 1000px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
-
-        /* Graph Animation */
         .draw-path {
             stroke-dasharray: 1;
             stroke-dashoffset: 1;
             animation: draw 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
-        @keyframes draw {
-            from { stroke-dashoffset: 1; }
-            to { stroke-dashoffset: 0; }
-        }
+        @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
     </style>
 </head>
 <body class="p-6">
@@ -79,7 +71,13 @@
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
-                        else if (lower.includes('ctr')) obj.CTR = num;
+                        else if (lower.includes('ctr')) {
+                            // CTR NORMALIZATION FIX:
+                            // If value > 1 (e.g. 3.4), assume it's already %, keep as 3.4
+                            // If value <= 1 (e.g. 0.034), assume decimal, convert to 3.4
+                            if (num > 1) obj.CTR = num;
+                            else obj.CTR = num * 100;
+                        }
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
                                 if (num < 20) {
@@ -98,12 +96,59 @@
             return obj;
         };
 
-        // --- TREND CHART ---
+        // --- COMPONENTS ---
+        const DebugPanel = ({ logs }) => {
+            if (!logs || logs.length === 0) return null;
+            return (
+                <div className="mt-8 bg-slate-800 text-slate-300 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="text-slate-500">
+                                    <th className="pb-2">Client</th>
+                                    <th className="pb-2">Source</th>
+                                    <th className="pb-2">Date</th>
+                                    <th className="pb-2">Campaign</th>
+                                    <th className="pb-2 text-right">Spend</th>
+                                    <th className="pb-2 text-right">Raw</th>
+                                    <th className="pb-2 text-right">Counted</th>
+                                    <th className="pb-2 pl-4">Note</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-700">
+                                {logs.map((log, i) => (
+                                    <tr key={i} className="hover:bg-slate-700">
+                                        <td className="py-2 text-blue-400">{log.client}</td>
+                                        <td className="py-2 opacity-70">{log.tab}</td>
+                                        <td className="py-2">{log.date}</td>
+                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
+                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
+                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
+                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
+            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
+                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
+                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+            </div>
+        );
+
         const TrendChart = ({ dailyData }) => {
             const [expanded, setExpanded] = useState(false);
             if (!dailyData || dailyData.length < 2) return null;
 
-            // Ensure data is sorted
             const data = [...dailyData].sort((a,b) => a.date - b.date);
             const width = 100;
             const height = 40;
@@ -137,7 +182,7 @@
                                 <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" />
                                 <line x1="0" y1="20" x2="100" y2="20" stroke="#e5e7eb" strokeWidth="0.5" />
                                 <line x1="0" y1="40" x2="100" y2="40" stroke="#e5e7eb" strokeWidth="0.5" />
-                                
+
                                 {expanded && (
                                     <>
                                         <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.1s'}} />
@@ -162,52 +207,6 @@
                 </div>
             );
         };
-
-        const DebugPanel = ({ logs }) => {
-            if (!logs || logs.length === 0) return null;
-            return (
-                <div className="mt-8 bg-slate-800 text-slate-300 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
-                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="text-slate-500">
-                                    <th className="pb-2">Client</th>
-                                    <th className="pb-2">Date</th>
-                                    <th className="pb-2">Campaign</th>
-                                    <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Raw</th>
-                                    <th className="pb-2 text-right">Counted</th>
-                                    <th className="pb-2 pl-4">Note</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-700">
-                                {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-700">
-                                        <td className="py-2 text-blue-400">{log.client}</td>
-                                        <td className="py-2">{log.date}</td>
-                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
-                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
-                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
-                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
-        };
-
-        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
-            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
-                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
-                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-            </div>
-        );
 
         const KPICard = ({ label, value, icon, color, trend, prevValue, details }) => {
             const [flipped, setFlipped] = useState(false);
@@ -373,6 +372,7 @@
             const cpaTrend = calcTrend(cpa, prevCpa);
             const ctrTrend = calcTrend(client.ctr, client.prev.ctr);
 
+            // Split Calcs for Flip Cards
             let gVal = 0, fVal = 0;
             if(client.name.includes('Nursing')){ gVal=client.gNurse; fVal=client.fNurse; }
             else if(client.name.includes('Brandon')){ gVal=client.gSupport; fVal=client.fSupport; }
@@ -408,7 +408,7 @@
                     <div className="grid grid-cols-3 gap-3">
                         <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
                         <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
-                        <KPICard label="CTR" value={`${client.ctr.toFixed(0)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(0)}%` : null} details={{ google: `${(gCtr*100).toFixed(0)}%`, facebook: `${(fCtr*100).toFixed(0)}%` }} />
+                        <KPICard label="CTR" value={`${client.ctr.toFixed(0)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(0)}%` : null} details={{ google: `${gCtr.toFixed(0)}%`, facebook: `${fCtr.toFixed(0)}%` }} />
                     </div>
                     
                     <TrendChart dailyData={client.dailyData} />
@@ -575,7 +575,6 @@
                                     }
 
                                     const dateKey = d.Date.toISOString().split('T')[0];
-                                    // Only aggregate if date falls within our pre-filled range (avoids future/past leakage)
                                     if (dailyMap.has(dateKey)) {
                                         const day = dailyMap.get(dateKey);
                                         if (isConv) {
@@ -626,7 +625,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 // Keep as decimal here
                         }));
 
                         let gDaily = 0, fDaily = 0;
