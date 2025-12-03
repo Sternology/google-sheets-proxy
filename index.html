@@ -23,12 +23,11 @@
 
         /* Graph Animation */
         .draw-path {
-            stroke-dasharray: 1;
-            stroke-dashoffset: 1;
+            stroke-dasharray: 2000;
+            stroke-dashoffset: 2000;
             animation: draw 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
         @keyframes draw {
-            from { stroke-dashoffset: 1; }
             to { stroke-dashoffset: 0; }
         }
     </style>
@@ -73,21 +72,26 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
+                        // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
                             if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
+                        // BUDGET
                         else if (lower.includes('budget')) {
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
+                        // CTR (Normalize to 0-100 range)
                         else if (lower.includes('ctr')) {
-                            if (num <= 1) obj.CTR = num * 100;
-                            else obj.CTR = num;
+                            if (num <= 1) obj.CTR = num * 100; // Convert 0.03 to 3.0
+                            else obj.CTR = num; // Keep 3.0 as 3.0
                         }
+                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                if (num < 20) {
+                                // FIXED THRESHOLD: < 50 allows Apollo (35) but blocks HC1 (£70)
+                                if (num < 50) {
                                     if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                     else if (header.includes('Support Worker')) obj.SupportApps = num;
                                     else if (header.includes('Care') || lower.includes('care')) {
@@ -107,17 +111,17 @@
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
-                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
-                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Debug Analysis Log</h3>
+                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="text-slate-500">
                                     <th className="pb-2">Client</th>
-                                    <th className="pb-2">Source</th>
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Campaign</th>
                                     <th className="pb-2 text-right">Spend</th>
+                                    <th className="pb-2 text-right">Raw</th>
                                     <th className="pb-2 text-right">Counted</th>
                                     <th className="pb-2 pl-4">Note</th>
                                 </tr>
@@ -126,10 +130,10 @@
                                 {logs.map((log, i) => (
                                     <tr key={i} className="hover:bg-slate-800">
                                         <td className="py-2 text-blue-400">{log.client}</td>
-                                        <td className="py-2 opacity-70">{log.tab}</td>
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
+                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
                                         <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
                                         <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
                                     </tr>
@@ -150,7 +154,6 @@
             </div>
         );
 
-        // UPDATED: Trend Chart with Slice logic
         const TrendChart = ({ dailyData }) => {
             const [expanded, setExpanded] = useState(false);
             const [visible, setVisible] = useState({ conv: true, cpa: true, ctr: true });
@@ -161,7 +164,7 @@
             if (!dailyData || dailyData.length < 3) return null;
 
             // 1. Sort by Date
-            // 2. REMOVE THE LAST ITEM (Today) using .slice(0, -1)
+            // 2. REMOVE THE LAST ITEM (Today) using .slice(0, -1) to avoid nose-dive
             const data = [...dailyData].sort((a,b) => a.date - b.date).slice(0, -1);
             
             const width = 100;
@@ -193,7 +196,6 @@
             const activeData = hoverIndex !== null ? data[hoverIndex] : null;
             const activeX = hoverIndex !== null ? (hoverIndex / (data.length - 1)) * width : 0;
 
-            // Used to force re-render of animation
             const animKey = expanded ? 'open' : 'closed';
 
             return (
@@ -219,7 +221,6 @@
                             onMouseMove={handleMouseMove}
                             onMouseLeave={() => setHoverIndex(null)}
                         >
-                            {/* Tooltip */}
                             {activeData && (
                                 <div className="absolute z-20 bg-slate-900/90 text-white text-[10px] p-2 rounded shadow-xl pointer-events-none backdrop-blur-sm border border-slate-700"
                                      style={{ left: `${(hoverIndex / (data.length - 1)) * 100}%`, top: '10px', transform: hoverIndex > data.length/2 ? 'translateX(-105%)' : 'translateX(5%)' }}>
@@ -227,7 +228,7 @@
                                     <div className="space-y-1">
                                         {visible.conv && <div className="flex justify-between gap-3 text-emerald-400"><span>Conv:</span> <strong>{activeData.conv.toFixed(0)}</strong></div>}
                                         {visible.cpa && <div className="flex justify-between gap-3 text-blue-400"><span>CPA:</span> <strong>£{activeData.cpa.toFixed(2)}</strong></div>}
-                                        {visible.ctr && <div className="flex justify-between gap-3 text-orange-400"><span>CTR:</span> <strong>{activeData.ctr.toFixed(1)}%</strong></div>}
+                                        {visible.ctr && <div className="flex justify-between gap-3 text-orange-400"><span>CTR:</span> <strong>{activeData.ctr.toFixed(2)}%</strong></div>}
                                     </div>
                                 </div>
                             )}
@@ -485,7 +486,7 @@
                     <div className="grid grid-cols-3 gap-3">
                         <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
                         <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
-                        <KPICard label="CTR" value={`${client.ctr.toFixed(0)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(0)}%` : null} details={{ google: `${(gCtr).toFixed(0)}%`, facebook: `${(fCtr).toFixed(0)}%` }} />
+                        <KPICard label="CTR" value={`${client.ctr.toFixed(2)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(2)}%` : null} details={{ google: `${(gCtr).toFixed(2)}%`, facebook: `${(fCtr).toFixed(2)}%` }} />
                     </div>
                     
                     <TrendChart dailyData={client.dailyData} />
@@ -645,7 +646,7 @@
                                         tempLogs.push({
                                             client: client.name, tab: tabName, date: d.Date.toLocaleDateString('en-GB'),
                                             camp: d.Campaign || d.Adset, spend: d.Cost, careApps: d.CareApps, rawCare: d.RawCare,
-                                            note: isConv ? 'Conv Tab' : d.RawCare > 5 ? 'High Val Ignored' : 'Matched'
+                                            note: isConv ? 'Conv Tab' : d.RawCare > 50 ? 'High Val Ignored' : 'Matched'
                                         });
                                     }
 
@@ -700,7 +701,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 
                         }));
 
                         let gDaily = 0, fDaily = 0;
@@ -723,7 +724,7 @@
 
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
-                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) * 100 : 0;
+                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) : 0;
 
                         return {
                             ...client, 
@@ -743,7 +744,7 @@
                             careConversions: g.care + f.care,
                             nursingConversions: g.nurse + f.nurse,
                             supportConversions: g.support + f.support,
-                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) * 100 : 0,
+                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) : 0,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
