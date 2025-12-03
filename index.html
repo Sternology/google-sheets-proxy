@@ -10,17 +10,27 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; font-family: -apple-system, system-ui, sans-serif; }
+        
+        /* Transitions */
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
+        .transition-all { transition: all 0.3s ease; }
+        
+        /* Card Flip */
         .perspective-1000 { perspective: 1000px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
+
+        /* Graph Animation */
         .draw-path {
             stroke-dasharray: 1;
             stroke-dashoffset: 1;
             animation: draw 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
-        @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+        @keyframes draw {
+            from { stroke-dashoffset: 1; }
+            to { stroke-dashoffset: 0; }
+        }
     </style>
 </head>
 <body class="p-6">
@@ -63,26 +73,21 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
-                        // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
                             if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
-                        // BUDGET
                         else if (lower.includes('budget')) {
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
-                        // CTR
                         else if (lower.includes('ctr')) {
                             if (num <= 1) obj.CTR = num * 100;
                             else obj.CTR = num;
                         }
-                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                // FIXED: Removed strict < 5 limit. Now accepts up to 200 daily apps.
-                                if (num < 200) {
+                                if (num < 20) {
                                     if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                     else if (header.includes('Support Worker')) obj.SupportApps = num;
                                     else if (header.includes('Care') || lower.includes('care')) {
@@ -102,8 +107,8 @@
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
-                <div className="mt-8 bg-slate-800 text-slate-300 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
-                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
+                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Debug Analysis Log</h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
@@ -113,20 +118,18 @@
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Campaign</th>
                                     <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Raw</th>
                                     <th className="pb-2 text-right">Counted</th>
                                     <th className="pb-2 pl-4">Note</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-700">
+                            <tbody className="divide-y divide-slate-800">
                                 {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-700">
+                                    <tr key={i} className="hover:bg-slate-800">
                                         <td className="py-2 text-blue-400">{log.client}</td>
                                         <td className="py-2 opacity-70">{log.tab}</td>
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
                                         <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
                                         <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
                                     </tr>
@@ -153,9 +156,12 @@
             const [hoverIndex, setHoverIndex] = useState(null);
             const containerRef = useRef(null);
 
-            if (!dailyData || dailyData.length < 2) return null;
+            if (!dailyData || dailyData.length < 3) return null; // Need at least 2 points AFTER removing today
 
-            const data = [...dailyData].sort((a,b) => a.date - b.date);
+            // Sort and REMOVE THE LAST DAY (Today)
+            const sorted = [...dailyData].sort((a,b) => a.date - b.date);
+            const data = sorted.slice(0, -1); 
+            
             const width = 100;
             const height = 40;
 
@@ -195,7 +201,7 @@
                             <span className="text-xl">📈</span>
                             <div>
                                 <div className="text-sm font-bold text-slate-700 uppercase tracking-wide">Performance Trends</div>
-                                <div className="text-xs text-slate-500">Click to view timeline</div>
+                                <div className="text-xs text-slate-500">Excluding today (incomplete data)</div>
                             </div>
                         </div>
                         <span className="text-slate-400 text-sm">{expanded ? 'Hide ▲' : 'View ▼'}</span>
@@ -689,7 +695,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 
                         }));
 
                         let gDaily = 0, fDaily = 0;
@@ -732,7 +738,7 @@
                             careConversions: g.care + f.care,
                             nursingConversions: g.nurse + f.nurse,
                             supportConversions: g.support + f.support,
-                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) : 0,
+                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) * 100 : 0,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
