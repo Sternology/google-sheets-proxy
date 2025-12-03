@@ -37,7 +37,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useEffect } = React;
+        const { useState, useMemo, useEffect, useRef } = React;
 
         // --- HELPERS ---
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
@@ -104,58 +104,12 @@
         };
 
         // --- COMPONENTS ---
-        const DebugPanel = ({ logs }) => {
-            if (!logs || logs.length === 0) return null;
-            return (
-                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl">
-                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Debug Analysis Log</h3>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="text-slate-500">
-                                    <th className="pb-2">Client</th>
-                                    <th className="pb-2">Source</th>
-                                    <th className="pb-2">Date</th>
-                                    <th className="pb-2">Campaign</th>
-                                    <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Raw Care</th>
-                                    <th className="pb-2 text-right">Counted</th>
-                                    <th className="pb-2 pl-4">Note</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-800">
-                                {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-800">
-                                        <td className="py-2 text-blue-400">{log.client}</td>
-                                        <td className="py-2 opacity-70">{log.tab}</td>
-                                        <td className="py-2">{log.date}</td>
-                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
-                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
-                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
-                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
-        };
-
-        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
-            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
-                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
-                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-            </div>
-        );
 
         const TrendChart = ({ dailyData }) => {
             const [expanded, setExpanded] = useState(false);
-            // State to track which metrics are visible. Defaults to all true.
             const [visible, setVisible] = useState({ conv: true, cpa: true, ctr: true });
+            const [hoverIndex, setHoverIndex] = useState(null);
+            const containerRef = useRef(null);
 
             if (!dailyData || dailyData.length < 2) return null;
 
@@ -176,8 +130,19 @@
                 }).join(" ");
             };
 
-            // Helper to toggle visibility
             const toggle = (key) => setVisible(prev => ({ ...prev, [key]: !prev[key] }));
+
+            const handleMouseMove = (e) => {
+                if (!containerRef.current) return;
+                const rect = containerRef.current.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const w = rect.width;
+                const index = Math.round((x / w) * (data.length - 1));
+                if (index >= 0 && index < data.length) setHoverIndex(index);
+            };
+
+            const activeData = hoverIndex !== null ? data[hoverIndex] : null;
+            const activeX = hoverIndex !== null ? (hoverIndex / (data.length - 1)) * width : 0;
 
             return (
                 <div className="mt-6 bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -195,51 +160,117 @@
                         <span className="text-slate-400 text-sm">{expanded ? 'Hide ▲' : 'View ▼'}</span>
                     </button>
 
-                    <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expanded ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'}`}>
-                        <div className="p-4 pt-0">
-                            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24 overflow-visible mt-4">
-                                <line x1="0" y1="0" x2="100" y2="0" stroke="#e2e8f0" strokeWidth="0.5" />
-                                <line x1="0" y1="20" x2="100" y2="20" stroke="#e2e8f0" strokeWidth="0.5" />
-                                <line x1="0" y1="40" x2="100" y2="40" stroke="#e2e8f0" strokeWidth="0.5" />
+                    <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expanded ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'}`}>
+                        <div 
+                            className="p-4 pt-0 relative" 
+                            ref={containerRef}
+                            onMouseMove={handleMouseMove}
+                            onMouseLeave={() => setHoverIndex(null)}
+                        >
+                            {/* TOOLTIP OVERLAY */}
+                            {activeData && (
+                                <div 
+                                    className="absolute z-20 bg-slate-900/90 text-white text-[10px] p-2 rounded shadow-xl pointer-events-none backdrop-blur-sm border border-slate-700"
+                                    style={{ 
+                                        left: `${(hoverIndex / (data.length - 1)) * 100}%`, 
+                                        top: '10px',
+                                        transform: hoverIndex > data.length/2 ? 'translateX(-105%)' : 'translateX(5%)'
+                                    }}
+                                >
+                                    <div className="font-bold mb-1 border-b border-slate-600 pb-1">
+                                        {activeData.date.toLocaleDateString(undefined, {weekday: 'short', day:'numeric', month:'short'})}
+                                    </div>
+                                    <div className="space-y-1">
+                                        {visible.conv && <div className="flex justify-between gap-3 text-emerald-400"><span>Conv:</span> <strong>{activeData.conv.toFixed(0)}</strong></div>}
+                                        {visible.cpa && <div className="flex justify-between gap-3 text-blue-400"><span>CPA:</span> <strong>£{activeData.cpa.toFixed(2)}</strong></div>}
+                                        {visible.ctr && <div className="flex justify-between gap-3 text-orange-400"><span>CTR:</span> <strong>{activeData.ctr.toFixed(2)}%</strong></div>}
+                                    </div>
+                                </div>
+                            )}
+
+                            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32 overflow-visible mt-4 cursor-crosshair">
+                                {/* Grid */}
+                                <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" />
+                                <line x1="0" y1="20" x2="100" y2="20" stroke="#e5e7eb" strokeWidth="0.5" />
+                                <line x1="0" y1="40" x2="100" y2="40" stroke="#e5e7eb" strokeWidth="0.5" />
 
                                 {expanded && (
                                     <>
-                                        {visible.conv && <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.1s'}} />}
-                                        {visible.cpa && <polyline points={getPath('cpa')} fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.3s'}} />}
-                                        {visible.ctr && <polyline points={getPath('ctr')} fill="none" stroke="#f97316" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="draw-path" pathLength="1" style={{animationDelay: '0.5s'}} />}
+                                        {visible.conv && <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.1s'}} />}
+                                        {visible.cpa && <polyline points={getPath('cpa')} fill="none" stroke="#3b82f6" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.3s'}} />}
+                                        {visible.ctr && <polyline points={getPath('ctr')} fill="none" stroke="#f97316" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.5s'}} />}
+                                        
+                                        {/* Hover Line */}
+                                        {activeData && (
+                                            <line 
+                                                x1={activeX} y1="0" x2={activeX} y2={height} 
+                                                stroke="#64748b" strokeWidth="0.5" strokeDasharray="2" 
+                                            />
+                                        )}
+                                        
+                                        {/* Hover Points */}
+                                        {activeData && visible.conv && <circle cx={activeX} cy={height - ((activeData.conv - Math.min(...data.map(d=>d.conv))) / (Math.max(...data.map(d=>d.conv)) - Math.min(...data.map(d=>d.conv))) * height) || height} r="1.5" fill="#10b981" />}
+                                        {activeData && visible.cpa && <circle cx={activeX} cy={height - ((activeData.cpa - Math.min(...data.map(d=>d.cpa))) / (Math.max(...data.map(d=>d.cpa)) - Math.min(...data.map(d=>d.cpa))) * height) || height} r="1.5" fill="#3b82f6" />}
                                     </>
                                 )}
                             </svg>
 
-                            <div className="flex justify-between text-[10px] text-gray-400 mt-2 font-mono uppercase">
+                            <div className="flex justify-between text-[8px] text-gray-400 mt-2 font-mono uppercase">
                                 <span>{data[0].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
                                 <span>{data[data.length-1].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
                             </div>
 
                             <div className="flex justify-center gap-4 mt-3 border-t border-slate-100 pt-2">
-                                <button 
-                                    onClick={() => toggle('conv')} 
-                                    className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.conv ? 'opacity-100' : 'opacity-40 grayscale'}`}
-                                >
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5"></div>
-                                    <span className="text-emerald-600">Conv</span>
+                                <button onClick={() => toggle('conv')} className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.conv ? 'opacity-100' : 'opacity-40 grayscale'}`}>
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5"></div><span className="text-emerald-600">Conv</span>
                                 </button>
-                                <button 
-                                    onClick={() => toggle('cpa')} 
-                                    className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.cpa ? 'opacity-100' : 'opacity-40 grayscale'}`}
-                                >
-                                    <div className="w-2 h-2 rounded-full bg-blue-500 mr-1.5"></div>
-                                    <span className="text-blue-600">CPA</span>
+                                <button onClick={() => toggle('cpa')} className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.cpa ? 'opacity-100' : 'opacity-40 grayscale'}`}>
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 mr-1.5"></div><span className="text-blue-600">CPA</span>
                                 </button>
-                                <button 
-                                    onClick={() => toggle('ctr')} 
-                                    className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.ctr ? 'opacity-100' : 'opacity-40 grayscale'}`}
-                                >
-                                    <div className="w-2 h-2 rounded-full bg-orange-500 mr-1.5"></div>
-                                    <span className="text-orange-500">CTR</span>
+                                <button onClick={() => toggle('ctr')} className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.ctr ? 'opacity-100' : 'opacity-40 grayscale'}`}>
+                                    <div className="w-2 h-2 rounded-full bg-orange-500 mr-1.5"></div><span className="text-orange-500">CTR</span>
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const DebugPanel = ({ logs }) => {
+            if (!logs || logs.length === 0) return null;
+            return (
+                <div className="mt-8 bg-slate-800 text-slate-300 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="text-slate-500">
+                                    <th className="pb-2">Client</th>
+                                    <th className="pb-2">Source</th>
+                                    <th className="pb-2">Date</th>
+                                    <th className="pb-2">Campaign</th>
+                                    <th className="pb-2 text-right">Spend</th>
+                                    <th className="pb-2 text-right">Raw</th>
+                                    <th className="pb-2 text-right">Counted</th>
+                                    <th className="pb-2 pl-4">Note</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-700">
+                                {logs.map((log, i) => (
+                                    <tr key={i} className="hover:bg-slate-700">
+                                        <td className="py-2 text-blue-400">{log.client}</td>
+                                        <td className="py-2 opacity-70">{log.tab}</td>
+                                        <td className="py-2">{log.date}</td>
+                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
+                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
+                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
+                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             );
@@ -301,29 +332,6 @@
                             </div>
                         </div>
                     </div>
-                </div>
-            );
-        };
-
-        const Gauge = ({ pct, label, sub, color, detail }) => {
-            const r = 40, c = 2 * Math.PI * r;
-            const off = c - (Math.min(pct, 100) / 100) * c;
-            return (
-                <div className="flex flex-col items-center justify-center relative">
-                    <div className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</div>
-                    <div className="relative flex items-center justify-center">
-                        <svg width="96" height="96" className="-rotate-90 transform">
-                            <circle cx="48" cy="48" r={r} stroke="#e2e8f0" strokeWidth="8" fill="none" />
-                            <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
-                                style={{ strokeDasharray: c, strokeDashoffset: off }} className="gauge-fill" />
-                        </svg>
-                        <div className="absolute font-bold text-gray-700 text-lg">{sub}</div>
-                    </div>
-                    {detail && (
-                        <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">
-                            {detail}
-                        </div>
-                    )}
                 </div>
             );
         };
