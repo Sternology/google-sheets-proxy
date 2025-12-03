@@ -10,27 +10,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; font-family: -apple-system, system-ui, sans-serif; }
-        
-        /* Transitions */
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
-        .transition-all { transition: all 0.3s ease; }
-        
-        /* Card Flip */
         .perspective-1000 { perspective: 1000px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
-
-        /* Graph Animation */
         .draw-path {
             stroke-dasharray: 1;
             stroke-dashoffset: 1;
-            animation: draw 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+            animation: draw 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
-        @keyframes draw {
-            from { stroke-dashoffset: 1; }
-            to { stroke-dashoffset: 0; }
-        }
+        @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
     </style>
 </head>
 <body class="p-6">
@@ -39,7 +29,7 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
-        // --- 1. HELPERS ---
+        // --- HELPERS ---
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val);
 
@@ -51,10 +41,8 @@
         const parseSheetDate = (dateStr) => {
             if (!dateStr) return null;
             const s = String(dateStr).trim();
-            // ISO (2025-01-01)
             const iso = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
             if (iso) return new Date(iso[1], iso[2] - 1, iso[3]);
-            // UK (01/01/2025)
             const uk = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
             if (uk) return new Date(uk[3], uk[2] - 1, uk[1]);
             const d = new Date(s);
@@ -77,13 +65,13 @@
                     if (!isNaN(num)) {
                         // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
-                            if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100; // Pence fix
+                            if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
                         // BUDGET
                         else if (lower.includes('budget')) {
-                            if (lower.includes('adset')) obj.DailyBudget = num / 100; // FB Pence
-                            else obj.DailyBudget = num; // Google Pounds
+                            if (lower.includes('adset')) obj.DailyBudget = num / 100;
+                            else obj.DailyBudget = num;
                         }
                         // CTR
                         else if (lower.includes('ctr')) {
@@ -93,8 +81,8 @@
                         // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                // Anti-Inflation: Ignore values > 5 (likely currency)
-                                if (num <= 5) {
+                                // FIXED: Removed strict < 5 limit. Now accepts up to 200 daily apps.
+                                if (num < 200) {
                                     if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                     else if (header.includes('Support Worker')) obj.SupportApps = num;
                                     else if (header.includes('Care') || lower.includes('care')) {
@@ -110,265 +98,7 @@
             return obj;
         };
 
-        // --- 2. COMPONENTS ---
-
-        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
-            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
-                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
-                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-            </div>
-        );
-
-        const TrendChart = ({ dailyData }) => {
-            const [expanded, setExpanded] = useState(false);
-            const [visible, setVisible] = useState({ conv: true, cpa: true, ctr: true });
-            const [hoverIndex, setHoverIndex] = useState(null);
-            const containerRef = useRef(null);
-
-            if (!dailyData || dailyData.length < 2) return null;
-
-            const data = [...dailyData].sort((a,b) => a.date - b.date);
-            const width = 100;
-            const height = 40;
-
-            const getPath = (key) => {
-                const vals = data.map(d => d[key] || 0);
-                const min = Math.min(...vals);
-                const max = Math.max(...vals);
-                if (max === min) return ""; 
-                return data.map((d, i) => {
-                    const x = (i / (data.length - 1)) * width;
-                    const y = height - ((d[key] - min) / (max - min)) * height;
-                    return `${x},${y}`;
-                }).join(" ");
-            };
-
-            const toggle = (key) => setVisible(prev => ({ ...prev, [key]: !prev[key] }));
-
-            const handleMouseMove = (e) => {
-                if (!containerRef.current) return;
-                const rect = containerRef.current.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const index = Math.round((x / rect.width) * (data.length - 1));
-                if (index >= 0 && index < data.length) setHoverIndex(index);
-            };
-
-            const activeData = hoverIndex !== null ? data[hoverIndex] : null;
-            const activeX = hoverIndex !== null ? (hoverIndex / (data.length - 1)) * width : 0;
-
-            return (
-                <div className="mt-6 bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                    <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between p-4 text-left bg-white hover:bg-slate-50 transition-colors">
-                        <div className="flex items-center gap-3">
-                            <span className="text-xl">📈</span>
-                            <div><div className="text-sm font-bold text-slate-700 uppercase tracking-wide">Performance Trends</div><div className="text-xs text-slate-500">Click to view timeline</div></div>
-                        </div>
-                        <span className="text-slate-400 text-sm">{expanded ? 'Hide ▲' : 'View ▼'}</span>
-                    </button>
-
-                    <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expanded ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'}`}>
-                        <div className="p-4 pt-0 relative" ref={containerRef} onMouseMove={handleMouseMove} onMouseLeave={() => setHoverIndex(null)}>
-                            {/* Tooltip */}
-                            {activeData && (
-                                <div className="absolute z-20 bg-slate-900/90 text-white text-[10px] p-2 rounded shadow-xl pointer-events-none backdrop-blur-sm border border-slate-700"
-                                     style={{ left: `${(hoverIndex / (data.length - 1)) * 100}%`, top: '10px', transform: hoverIndex > data.length/2 ? 'translateX(-105%)' : 'translateX(5%)' }}>
-                                    <div className="font-bold mb-1 border-b border-slate-600 pb-1">{activeData.date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</div>
-                                    <div className="space-y-1">
-                                        {visible.conv && <div className="flex justify-between gap-3 text-emerald-400"><span>Conv:</span> <strong>{activeData.conv.toFixed(0)}</strong></div>}
-                                        {visible.cpa && <div className="flex justify-between gap-3 text-blue-400"><span>CPA:</span> <strong>£{activeData.cpa.toFixed(2)}</strong></div>}
-                                        {visible.ctr && <div className="flex justify-between gap-3 text-orange-400"><span>CTR:</span> <strong>{activeData.ctr.toFixed(1)}%</strong></div>}
-                                    </div>
-                                </div>
-                            )}
-
-                            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32 overflow-visible mt-4 cursor-crosshair">
-                                <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" />
-                                <line x1="0" y1="20" x2="100" y2="20" stroke="#e5e7eb" strokeWidth="0.5" />
-                                <line x1="0" y1="40" x2="100" y2="40" stroke="#e5e7eb" strokeWidth="0.5" />
-                                {expanded && (
-                                    <>
-                                        {visible.conv && <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="1" strokeLinecap="round" className="draw-path" style={{animationDelay: '0.1s'}} />}
-                                        {visible.cpa && <polyline points={getPath('cpa')} fill="none" stroke="#3b82f6" strokeWidth="1" strokeLinecap="round" className="draw-path" style={{animationDelay: '0.3s'}} />}
-                                        {visible.ctr && <polyline points={getPath('ctr')} fill="none" stroke="#f97316" strokeWidth="1" strokeLinecap="round" className="draw-path" style={{animationDelay: '0.5s'}} />}
-                                        {activeData && <line x1={activeX} y1="0" x2={activeX} y2={height} stroke="#64748b" strokeWidth="0.5" strokeDasharray="2" />}
-                                    </>
-                                )}
-                            </svg>
-
-                            <div className="flex justify-between text-[8px] text-gray-400 mt-2 font-mono uppercase">
-                                <span>{data[0].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
-                                <span>{data[data.length-1].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
-                            </div>
-
-                            <div className="flex justify-center gap-4 mt-3 border-t border-slate-100 pt-2">
-                                <button onClick={() => toggle('conv')} className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.conv ? 'opacity-100' : 'opacity-40 grayscale'}`}>
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5"></div><span className="text-emerald-600">Conv</span>
-                                </button>
-                                <button onClick={() => toggle('cpa')} className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.cpa ? 'opacity-100' : 'opacity-40 grayscale'}`}>
-                                    <div className="w-2 h-2 rounded-full bg-blue-500 mr-1.5"></div><span className="text-blue-600">CPA</span>
-                                </button>
-                                <button onClick={() => toggle('ctr')} className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.ctr ? 'opacity-100' : 'opacity-40 grayscale'}`}>
-                                    <div className="w-2 h-2 rounded-full bg-orange-500 mr-1.5"></div><span className="text-orange-500">CTR</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const KPICard = ({ label, value, icon, color, trend, prevValue, details }) => {
-            const [flipped, setFlipped] = useState(false);
-            const theme = {
-                green: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                blue: "bg-blue-50 text-blue-700 border-blue-200",
-                orange: "bg-orange-50 text-orange-700 border-orange-200"
-            }[color] || "bg-gray-50 text-gray-700";
-
-            let trendColor = "bg-gray-100 text-gray-600";
-            let arrow = "→";
-            if (trend !== undefined && !isNaN(trend)) {
-                const isPositive = trend > 0;
-                arrow = isPositive ? "↑" : "↓";
-                const isCPA = label.includes('CPA');
-                if (isCPA) trendColor = isPositive ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700";
-                else trendColor = isPositive ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700";
-            }
-            
-            return (
-                <div className="perspective-1000 h-32 cursor-pointer group" onClick={() => setFlipped(!flipped)}>
-                    <div className={`relative w-full h-full transition-transform duration-500 transform-style-3d ${flipped ? 'rotate-y-180' : ''}`}>
-                        <div className={`absolute w-full h-full backface-hidden p-4 rounded-xl border ${theme} flex flex-col justify-between shadow-sm group-hover:shadow-md`}>
-                            <div>
-                                <div className="flex items-center gap-2 opacity-90 mb-1">
-                                    <span className="text-xl">{icon}</span>
-                                    <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
-                                </div>
-                                <div className="text-2xl font-bold">{value}</div>
-                            </div>
-                            {trend !== undefined && !isNaN(trend) && (
-                                <div className={`w-full py-1.5 px-2 rounded text-xs font-bold flex items-center justify-between ${trendColor}`}>
-                                    <span className="flex items-center gap-1">{arrow} {Math.abs(trend).toFixed(0)}%</span>
-                                    <span className="opacity-60 font-normal">vs prev</span>
-                                </div>
-                            )}
-                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px]">↻</div>
-                        </div>
-                        <div className="absolute w-full h-full backface-hidden rotate-y-180 p-4 rounded-xl border bg-white border-gray-200 flex flex-col justify-center shadow-sm">
-                            <div className="text-xs font-bold uppercase text-gray-400 mb-2 text-center">{label} Split</div>
-                            <div className="grid grid-cols-2 gap-2 text-center">
-                                <div className="bg-orange-50 p-2 rounded border border-orange-100">
-                                    <div className="text-[10px] font-bold text-orange-600 uppercase">Google</div>
-                                    <div className="font-bold text-gray-800 text-sm">{details?.google || '-'}</div>
-                                </div>
-                                <div className="bg-blue-50 p-2 rounded border border-blue-100">
-                                    <div className="text-[10px] font-bold text-blue-600 uppercase">Meta</div>
-                                    <div className="font-bold text-gray-800 text-sm">{details?.facebook || '-'}</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const Gauge = ({ pct, label, sub, color, detail }) => {
-            const r = 40, c = 2 * Math.PI * r;
-            const off = c - (Math.min(pct, 100) / 100) * c;
-            return (
-                <div className="flex flex-col items-center justify-center relative">
-                    <div className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</div>
-                    <div className="relative flex items-center justify-center">
-                        <svg width="96" height="96" className="-rotate-90 transform">
-                            <circle cx="48" cy="48" r={r} stroke="#e2e8f0" strokeWidth="8" fill="none" />
-                            <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
-                                style={{ strokeDasharray: c, strokeDashoffset: off }} className="gauge-fill" />
-                        </svg>
-                        <div className="absolute font-bold text-gray-700 text-lg">{sub}</div>
-                    </div>
-                    {detail && <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">{detail}</div>}
-                </div>
-            );
-        };
-
-        const BudgetAction = ({ client }) => {
-            const [open, setOpen] = useState(false);
-            const diff = client.budget - client.total;
-
-            if (client.isHistorical) {
-                const under = diff >= 0;
-                return (
-                    <div className={`mt-6 p-4 rounded-xl border flex justify-between items-center ${under ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
-                        <span className="font-bold">{under ? 'Under Budget' : 'Over Budget'}</span>
-                        <span className="font-mono font-bold text-lg">{under ? '-' : '+'}{formatMoney(Math.abs(diff))}</span>
-                    </div>
-                );
-            }
-
-            const remaining = client.budget - client.total;
-            const target = Math.max(0, remaining / client.daysLeft);
-            const change = target - client.currentDailyBudget;
-            
-            let status = 'normal';
-            if (client.total >= client.budget) status = 'critical';
-            else if (Math.abs(change) < 3) status = 'optimal';
-            else if (change > 0) status = 'increase';
-            else status = 'decrease';
-
-            const style = {
-                critical: "bg-red-50 border-red-200 text-red-900",
-                increase: "bg-indigo-50 border-indigo-200 text-indigo-900",
-                decrease: "bg-amber-50 border-amber-200 text-amber-900",
-                optimal: "bg-emerald-50 border-emerald-200 text-emerald-900",
-                normal: "bg-gray-50 border-gray-200 text-gray-900"
-            }[status];
-
-            const msg = {
-                critical: "Budget Exhausted",
-                increase: "Increase Daily Spend",
-                decrease: "Reduce Daily Spend",
-                optimal: "Spend is Optimal",
-                normal: "Adjust Spend"
-            }[status];
-
-            let gRec = 0, fRec = 0;
-            const totalCur = client.googleDailyBudget + client.facebookDailyBudget;
-            if (client.name.includes('Brandon')) { fRec = target; }
-            else if (totalCur > 0) {
-                const ratio = client.googleDailyBudget / totalCur;
-                gRec = target * ratio; fRec = target * (1 - ratio);
-            } else { gRec = target / 2; fRec = target / 2; }
-
-            return (
-                <div className={`mt-6 rounded-xl border overflow-hidden transition-all duration-300 ${style} shadow-sm hover:shadow-md cursor-pointer`} onClick={() => setOpen(!open)}>
-                    <div className="p-5 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <span className="text-2xl">{status === 'critical' ? '🚨' : status === 'optimal' ? '✅' : '⚙️'}</span>
-                            <div><div className="text-[10px] uppercase opacity-60 font-bold tracking-wide">Recommendation</div><div className="font-bold text-sm">{msg}</div></div>
-                        </div>
-                        <span className="text-xl opacity-50">{open ? '−' : '+'}</span>
-                    </div>
-                    <div className={`overflow-hidden transition-all duration-300 ${open ? 'max-h-48 opacity-100 border-t border-black/5' : 'max-h-0 opacity-0'}`}>
-                        <div className="p-5 pt-2 grid grid-cols-2 gap-6 text-sm bg-white/50">
-                            <div>
-                                <div className="text-xs uppercase opacity-60 mb-1 font-semibold">Daily Target</div>
-                                <div className="flex justify-between mb-1"><span>Current</span><span className="font-mono">{formatMoney(client.currentDailyBudget)}</span></div>
-                                <div className="flex justify-between font-bold"><span>Target</span><span className="font-mono">{formatMoney(target)}</span></div>
-                                <div className="mt-2 pt-2 border-t border-black/10 flex justify-between font-bold text-xs"><span>Change</span><span>{change > 0 ? '+' : ''}{formatMoney(change)}</span></div>
-                            </div>
-                            <div>
-                                <div className="text-xs uppercase opacity-60 mb-1 font-semibold">Platform Split</div>
-                                {gRec > 0 && <div className="flex justify-between mb-1"><span>Google</span><span className="font-mono">{formatMoney(gRec)}</span></div>}
-                                {fRec > 0 && <div className="flex justify-between"><span>Meta</span><span className="font-mono">{formatMoney(fRec)}</span></div>}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
+        // --- COMPONENTS ---
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
@@ -408,13 +138,298 @@
             );
         };
 
+        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
+            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
+                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
+                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+            </div>
+        );
+
+        const TrendChart = ({ dailyData }) => {
+            const [expanded, setExpanded] = useState(false);
+            const [visible, setVisible] = useState({ conv: true, cpa: true, ctr: true });
+            const [hoverIndex, setHoverIndex] = useState(null);
+            const containerRef = useRef(null);
+
+            if (!dailyData || dailyData.length < 2) return null;
+
+            const data = [...dailyData].sort((a,b) => a.date - b.date);
+            const width = 100;
+            const height = 40;
+
+            const getPath = (key) => {
+                const vals = data.map(d => d[key] || 0);
+                const min = Math.min(...vals);
+                const max = Math.max(...vals);
+                if (max === min) return ""; 
+
+                return data.map((d, i) => {
+                    const x = (i / (data.length - 1)) * width;
+                    const y = height - ((d[key] - min) / (max - min)) * height;
+                    return `${x},${y}`;
+                }).join(" ");
+            };
+
+            const toggle = (key) => setVisible(prev => ({ ...prev, [key]: !prev[key] }));
+
+            const handleMouseMove = (e) => {
+                if (!containerRef.current) return;
+                const rect = containerRef.current.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const index = Math.round((x / rect.width) * (data.length - 1));
+                if (index >= 0 && index < data.length) setHoverIndex(index);
+            };
+
+            const activeData = hoverIndex !== null ? data[hoverIndex] : null;
+            const activeX = hoverIndex !== null ? (hoverIndex / (data.length - 1)) * width : 0;
+
+            return (
+                <div className="mt-6 bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                    <button 
+                        onClick={() => setExpanded(!expanded)}
+                        className="w-full flex items-center justify-between p-4 text-left bg-white hover:bg-slate-50 transition-colors"
+                    >
+                        <div className="flex items-center gap-3">
+                            <span className="text-xl">📈</span>
+                            <div>
+                                <div className="text-sm font-bold text-slate-700 uppercase tracking-wide">Performance Trends</div>
+                                <div className="text-xs text-slate-500">Click to view timeline</div>
+                            </div>
+                        </div>
+                        <span className="text-slate-400 text-sm">{expanded ? 'Hide ▲' : 'View ▼'}</span>
+                    </button>
+
+                    <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expanded ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'}`}>
+                        <div 
+                            className="p-4 pt-0 relative" 
+                            ref={containerRef}
+                            onMouseMove={handleMouseMove}
+                            onMouseLeave={() => setHoverIndex(null)}
+                        >
+                            {/* Tooltip */}
+                            {activeData && (
+                                <div className="absolute z-20 bg-slate-900/90 text-white text-[10px] p-2 rounded shadow-xl pointer-events-none backdrop-blur-sm border border-slate-700"
+                                     style={{ left: `${(hoverIndex / (data.length - 1)) * 100}%`, top: '10px', transform: hoverIndex > data.length/2 ? 'translateX(-105%)' : 'translateX(5%)' }}>
+                                    <div className="font-bold mb-1 border-b border-slate-600 pb-1">{activeData.date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</div>
+                                    <div className="space-y-1">
+                                        {visible.conv && <div className="flex justify-between gap-3 text-emerald-400"><span>Conv:</span> <strong>{activeData.conv.toFixed(0)}</strong></div>}
+                                        {visible.cpa && <div className="flex justify-between gap-3 text-blue-400"><span>CPA:</span> <strong>£{activeData.cpa.toFixed(2)}</strong></div>}
+                                        {visible.ctr && <div className="flex justify-between gap-3 text-orange-400"><span>CTR:</span> <strong>{activeData.ctr.toFixed(1)}%</strong></div>}
+                                    </div>
+                                </div>
+                            )}
+
+                            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32 overflow-visible mt-4 cursor-crosshair">
+                                <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" />
+                                <line x1="0" y1="20" x2="100" y2="20" stroke="#e5e7eb" strokeWidth="0.5" />
+                                <line x1="0" y1="40" x2="100" y2="40" stroke="#e5e7eb" strokeWidth="0.5" />
+                                {expanded && (
+                                    <>
+                                        {visible.conv && <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.1s'}} />}
+                                        {visible.cpa && <polyline points={getPath('cpa')} fill="none" stroke="#3b82f6" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.3s'}} />}
+                                        {visible.ctr && <polyline points={getPath('ctr')} fill="none" stroke="#f97316" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.5s'}} />}
+                                        {activeData && <line x1={activeX} y1="0" x2={activeX} y2={height} stroke="#64748b" strokeWidth="0.5" strokeDasharray="2" />}
+                                    </>
+                                )}
+                            </svg>
+
+                            <div className="flex justify-between text-[8px] text-gray-400 mt-2 font-mono uppercase">
+                                <span>{data[0].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
+                                <span>{data[data.length-1].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
+                            </div>
+
+                            <div className="flex justify-center gap-4 mt-3 border-t border-slate-100 pt-2">
+                                <button onClick={() => toggle('conv')} className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.conv ? 'opacity-100' : 'opacity-40 grayscale'}`}>
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5"></div><span className="text-emerald-600">Conv</span>
+                                </button>
+                                <button onClick={() => toggle('cpa')} className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.cpa ? 'opacity-100' : 'opacity-40 grayscale'}`}>
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 mr-1.5"></div><span className="text-blue-600">CPA</span>
+                                </button>
+                                <button onClick={() => toggle('ctr')} className={`flex items-center text-[10px] font-bold uppercase transition-opacity ${visible.ctr ? 'opacity-100' : 'opacity-40 grayscale'}`}>
+                                    <div className="w-2 h-2 rounded-full bg-orange-500 mr-1.5"></div><span className="text-orange-500">CTR</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const KPICard = ({ label, value, icon, color, trend, prevValue, details }) => {
+            const [flipped, setFlipped] = useState(false);
+            const theme = {
+                green: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                blue: "bg-blue-50 text-blue-700 border-blue-200",
+                orange: "bg-orange-50 text-orange-700 border-orange-200"
+            }[color] || "bg-gray-50 text-gray-700";
+
+            let trendColor = "bg-gray-100 text-gray-600";
+            let arrow = "→";
+            
+            if (trend !== undefined && trend !== null && !isNaN(trend) && isFinite(trend)) {
+                const isPositive = trend > 0;
+                arrow = isPositive ? "↑" : "↓";
+                const isCPA = label.includes('CPA') || label.includes('Cost');
+                if (isCPA) trendColor = isPositive ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700";
+                else trendColor = isPositive ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700";
+            }
+            
+            return (
+                <div className="perspective-1000 h-32 cursor-pointer group" onClick={() => setFlipped(!flipped)}>
+                    <div className={`relative w-full h-full transition-transform duration-500 transform-style-3d ${flipped ? 'rotate-y-180' : ''}`}>
+                        {/* FRONT */}
+                        <div className={`absolute w-full h-full backface-hidden p-4 rounded-xl border ${theme} flex flex-col justify-between shadow-sm group-hover:shadow-md`}>
+                            <div>
+                                <div className="flex items-center gap-2 opacity-90 mb-1">
+                                    <span className="text-xl">{icon}</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
+                                </div>
+                                <div className="text-2xl font-bold">{value}</div>
+                            </div>
+                            
+                            {trend !== undefined && !isNaN(trend) && isFinite(trend) && (
+                                <div className={`w-full py-1.5 px-2 rounded text-xs font-bold flex items-center justify-between ${trendColor}`}>
+                                    <span className="flex items-center gap-1">{arrow} {Math.abs(trend).toFixed(0)}%</span>
+                                    <span className="opacity-60 font-normal">vs prev</span>
+                                </div>
+                            )}
+                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px]">↻</div>
+                        </div>
+
+                        {/* BACK */}
+                        <div className="absolute w-full h-full backface-hidden rotate-y-180 p-4 rounded-xl border bg-white border-gray-200 flex flex-col justify-center shadow-sm">
+                            <div className="text-xs font-bold uppercase text-gray-400 mb-2 text-center">{label} Split</div>
+                            <div className="grid grid-cols-2 gap-2 text-center">
+                                <div className="bg-orange-50 p-2 rounded border border-orange-100">
+                                    <div className="text-[10px] font-bold text-orange-600 uppercase">Google</div>
+                                    <div className="font-bold text-gray-800 text-sm">{details?.google || '-'}</div>
+                                </div>
+                                <div className="bg-blue-50 p-2 rounded border border-blue-100">
+                                    <div className="text-[10px] font-bold text-blue-600 uppercase">Meta</div>
+                                    <div className="font-bold text-gray-800 text-sm">{details?.facebook || '-'}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Gauge = ({ pct, label, sub, color, detail }) => {
+            const r = 40, c = 2 * Math.PI * r;
+            const off = c - (Math.min(pct, 100) / 100) * c;
+            return (
+                <div className="flex flex-col items-center justify-center relative">
+                    <div className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</div>
+                    <div className="relative flex items-center justify-center">
+                        <svg width="96" height="96" className="-rotate-90 transform">
+                            <circle cx="48" cy="48" r={r} stroke="#e2e8f0" strokeWidth="8" fill="none" />
+                            <circle cx="48" cy="48" r={r} stroke={color} strokeWidth="8" fill="none" strokeLinecap="round"
+                                style={{ strokeDasharray: c, strokeDashoffset: off }} className="gauge-fill" />
+                        </svg>
+                        <div className="absolute font-bold text-gray-700 text-lg">{sub}</div>
+                    </div>
+                    {detail && (
+                        <div className="text-[10px] text-gray-500 mt-1 font-medium bg-gray-100 px-2 py-1 rounded-full">
+                            {detail}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const BudgetAction = ({ client }) => {
+            const [open, setOpen] = useState(false);
+
+            if (client.isHistorical) {
+                const diff = client.budget - client.total;
+                const under = diff >= 0;
+                return (
+                    <div className={`mt-6 p-4 rounded-xl border flex justify-between items-center ${under ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                        <span className="font-bold">{under ? 'Under Budget' : 'Over Budget'}</span>
+                        <span className="font-mono font-bold text-lg">{under ? '-' : '+'}{formatMoney(Math.abs(diff))}</span>
+                    </div>
+                );
+            }
+
+            const remaining = client.budget - client.total;
+            const target = Math.max(0, remaining / client.daysLeft);
+            const current = client.currentDailyBudget;
+            const change = target - current;
+            
+            let status = 'normal';
+            if (client.total >= client.budget) status = 'critical';
+            else if (Math.abs(change) < 3) status = 'optimal';
+            else if (change > 0) status = 'increase';
+            else status = 'decrease';
+
+            const style = {
+                critical: "bg-red-50 border-red-200 text-red-900",
+                increase: "bg-indigo-50 border-indigo-200 text-indigo-900",
+                decrease: "bg-amber-50 border-amber-200 text-amber-900",
+                optimal: "bg-emerald-50 border-emerald-200 text-emerald-900",
+                normal: "bg-gray-50 border-gray-200 text-gray-900"
+            }[status];
+
+            const msg = {
+                critical: "Budget Exhausted",
+                increase: "Increase Daily Spend",
+                decrease: "Reduce Daily Spend",
+                optimal: "Spend is Optimal",
+                normal: "Adjust Spend"
+            }[status];
+
+            let gRec = 0, fRec = 0;
+            const totalCur = client.googleDailyBudget + client.facebookDailyBudget;
+            if (client.name.includes('Brandon')) { fRec = target; }
+            else if (totalCur > 0) {
+                const ratio = client.googleDailyBudget / totalCur;
+                gRec = target * ratio; fRec = target * (1 - ratio);
+            } else { gRec = target / 2; fRec = target / 2; }
+
+            return (
+                <div className={`mt-6 rounded-xl border overflow-hidden transition-all duration-300 ${style} shadow-sm hover:shadow-md cursor-pointer`} onClick={() => setOpen(!open)}>
+                    <div className="p-5 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl">{status === 'critical' ? '🚨' : status === 'optimal' ? '✅' : '⚙️'}</span>
+                            <div>
+                                <div className="text-[10px] uppercase opacity-60 font-bold tracking-wide">Recommendation</div>
+                                <div className="font-bold text-sm">{msg}</div>
+                            </div>
+                        </div>
+                        <span className="text-xl opacity-50">{open ? '−' : '+'}</span>
+                    </div>
+
+                    <div className={`overflow-hidden transition-all duration-300 ${open ? 'max-h-48 opacity-100 border-t border-black/5' : 'max-h-0 opacity-0'}`}>
+                        <div className="p-5 pt-2 grid grid-cols-2 gap-6 text-sm bg-white/50">
+                            <div>
+                                <div className="text-xs uppercase opacity-60 mb-1 font-semibold">Daily Target</div>
+                                <div className="flex justify-between mb-1"><span>Current</span><span className="font-mono">{formatMoney(current)}</span></div>
+                                <div className="flex justify-between font-bold"><span>Target</span><span className="font-mono">{formatMoney(target)}</span></div>
+                                <div className="mt-2 pt-2 border-t border-black/10 flex justify-between font-bold text-xs">
+                                    <span>Change</span><span>{change > 0 ? '+' : ''}{formatMoney(change)}</span>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs uppercase opacity-60 mb-1 font-semibold">Platform Split</div>
+                                {gRec > 0 && <div className="flex justify-between mb-1"><span>Google</span><span className="font-mono">{formatMoney(gRec)}</span></div>}
+                                {fRec > 0 && <div className="flex justify-between"><span>Meta</span><span className="font-mono">{formatMoney(fRec)}</span></div>}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const ClientCard = ({ client }) => {
             const [open, setOpen] = useState(false);
             
             let kpi = { lbl: 'Conversions', val: client.conversions, icon: '🎯', prev: client.prev.conversions };
             if (client.name.includes('Nursing')) kpi = { lbl: 'Nurse Apps', val: client.nursingConversions, icon: '👩‍⚕️', prev: client.prev.nursingConversions };
-            else if (client.name.includes('Brandon')) kpi = { lbl: 'Care Apps', val: client.supportConversions + client.careConversions, icon: '🏥', prev: client.prev.supportConversions + client.prev.careConversions };
-            else if (client.name.includes('Care') || client.name.includes('HC-One') || client.name.includes('Apollo')) kpi = { lbl: 'Care Apps', val: client.careConversions, icon: '🏥', prev: client.prev.careConversions };
+            else if (client.name.includes('Brandon')) kpi = { lbl: 'Support Apps', val: client.supportConversions + client.careConversions, icon: '📝', prev: client.prev.supportConversions + client.prev.careConversions };
+            else if (client.name.includes('Care') || client.name.includes('HC-One')) kpi = { lbl: 'Care Apps', val: client.careConversions, icon: '🏥', prev: client.prev.careConversions };
 
             const calcTrend = (curr, prev) => prev > 0 ? ((curr - prev) / prev) * 100 : 0;
             const convTrend = calcTrend(kpi.val, kpi.prev);
@@ -423,6 +438,7 @@
             const cpaTrend = calcTrend(cpa, prevCpa);
             const ctrTrend = calcTrend(client.ctr, client.prev.ctr);
 
+            // Split Calcs for Flip Cards
             let gVal = 0, fVal = 0;
             if(client.name.includes('Nursing')){ gVal=client.gNurse; fVal=client.fNurse; }
             else if(client.name.includes('Brandon')){ gVal=client.gSupport; fVal=client.fSupport; }
@@ -673,7 +689,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 
                         }));
 
                         let gDaily = 0, fDaily = 0;
@@ -716,7 +732,7 @@
                             careConversions: g.care + f.care,
                             nursingConversions: g.nurse + f.nurse,
                             supportConversions: g.support + f.support,
-                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) * 100 : 0,
+                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) : 0,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
