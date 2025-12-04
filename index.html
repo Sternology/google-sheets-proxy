@@ -72,25 +72,20 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
-                        // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
                             if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
-                        // BUDGET
                         else if (lower.includes('budget')) {
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
-                        // CTR (Normalize to 0-100 range)
                         else if (lower.includes('ctr')) {
-                            if (num <= 1) obj.CTR = num * 100; // Convert 0.03 to 3.0
-                            else obj.CTR = num; // Keep 3.0 as 3.0
+                            if (num <= 1) obj.CTR = num * 100;
+                            else obj.CTR = num;
                         }
-                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                // FIXED THRESHOLD: < 50 allows Apollo (35) but blocks HC1 (£70)
                                 if (num < 50) {
                                     if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                     else if (header.includes('Support Worker')) obj.SupportApps = num;
@@ -121,7 +116,6 @@
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Campaign</th>
                                     <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Raw</th>
                                     <th className="pb-2 text-right">Counted</th>
                                     <th className="pb-2 pl-4">Note</th>
                                 </tr>
@@ -133,7 +127,6 @@
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
                                         <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
                                         <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
                                     </tr>
@@ -160,25 +153,23 @@
             const [hoverIndex, setHoverIndex] = useState(null);
             const containerRef = useRef(null);
 
-            // Logic: Need at least 2 points AFTER removing today
             if (!dailyData || dailyData.length < 3) return null;
 
-            // 1. Sort by Date
-            // 2. REMOVE THE LAST ITEM (Today) using .slice(0, -1) to avoid nose-dive
             const data = [...dailyData].sort((a,b) => a.date - b.date).slice(0, -1);
             
+            // Calculate Max Values for Scales (with 10% headroom)
+            const maxConv = Math.max(...data.map(d => d.conv)) * 1.1 || 1;
+            const maxCPA = Math.max(...data.map(d => d.cpa)) * 1.1 || 1;
+            const maxCTR = Math.max(...data.map(d => d.ctr)) * 1.1 || 1;
+
             const width = 100;
             const height = 40;
 
-            const getPath = (key) => {
-                const vals = data.map(d => d[key] || 0);
-                const min = Math.min(...vals);
-                const max = Math.max(...vals);
-                if (max === min) return ""; 
-
+            const getPath = (key, maxVal) => {
                 return data.map((d, i) => {
                     const x = (i / (data.length - 1)) * width;
-                    const y = height - ((d[key] - min) / (max - min)) * height;
+                    // Scale 0 to Max
+                    const y = height - (d[key] / maxVal) * height;
                     return `${x},${y}`;
                 }).join(" ");
             };
@@ -195,7 +186,6 @@
 
             const activeData = hoverIndex !== null ? data[hoverIndex] : null;
             const activeX = hoverIndex !== null ? (hoverIndex / (data.length - 1)) * width : 0;
-
             const animKey = expanded ? 'open' : 'closed';
 
             return (
@@ -214,15 +204,16 @@
                         <span className="text-slate-400 text-sm">{expanded ? 'Hide ▲' : 'View ▼'}</span>
                     </button>
 
-                    <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expanded ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'}`}>
+                    <div className={`transition-all duration-500 ease-in-out overflow-hidden ${expanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
                         <div 
                             className="p-4 pt-0 relative" 
                             ref={containerRef}
                             onMouseMove={handleMouseMove}
                             onMouseLeave={() => setHoverIndex(null)}
                         >
+                            {/* Tooltip */}
                             {activeData && (
-                                <div className="absolute z-20 bg-slate-900/90 text-white text-[10px] p-2 rounded shadow-xl pointer-events-none backdrop-blur-sm border border-slate-700"
+                                <div className="absolute z-20 bg-slate-900/95 text-white text-[10px] p-2 rounded shadow-xl pointer-events-none backdrop-blur-sm border border-slate-700"
                                      style={{ left: `${(hoverIndex / (data.length - 1)) * 100}%`, top: '10px', transform: hoverIndex > data.length/2 ? 'translateX(-105%)' : 'translateX(5%)' }}>
                                     <div className="font-bold mb-1 border-b border-slate-600 pb-1">{activeData.date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</div>
                                     <div className="space-y-1">
@@ -233,19 +224,40 @@
                                 </div>
                             )}
 
-                            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32 overflow-visible mt-4 cursor-crosshair">
-                                <line x1="0" y1="0" x2="100" y2="0" stroke="#e5e7eb" strokeWidth="0.5" />
-                                <line x1="0" y1="20" x2="100" y2="20" stroke="#e5e7eb" strokeWidth="0.5" />
-                                <line x1="0" y1="40" x2="100" y2="40" stroke="#e5e7eb" strokeWidth="0.5" />
-                                {expanded && (
-                                    <g key={animKey}>
-                                        {visible.conv && <polyline points={getPath('conv')} fill="none" stroke="#10b981" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.1s'}} />}
-                                        {visible.cpa && <polyline points={getPath('cpa')} fill="none" stroke="#3b82f6" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.3s'}} />}
-                                        {visible.ctr && <polyline points={getPath('ctr')} fill="none" stroke="#f97316" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.5s'}} />}
-                                        {activeData && <line x1={activeX} y1="0" x2={activeX} y2={height} stroke="#64748b" strokeWidth="0.5" strokeDasharray="2" />}
-                                    </g>
-                                )}
-                            </svg>
+                            {/* CHART AREA WITH SCALES */}
+                            <div className="relative mt-6">
+                                {/* Left Scale (Conv/CPA) */}
+                                <div className="absolute -left-1 top-0 bottom-0 flex flex-col justify-between text-[8px] font-bold font-mono h-32 -translate-x-full pr-1 text-right">
+                                    <div className="flex flex-col gap-1">
+                                        {visible.conv && <span className="text-emerald-600">{Math.round(maxConv/1.1)}</span>}
+                                        {visible.cpa && <span className="text-blue-600">£{Math.round(maxCPA/1.1)}</span>}
+                                    </div>
+                                    <span className="text-slate-400">0</span>
+                                </div>
+
+                                {/* Right Scale (CTR) */}
+                                <div className="absolute -right-1 top-0 bottom-0 flex flex-col justify-between text-[8px] font-bold font-mono h-32 translate-x-full pl-1 text-left">
+                                    <div className="flex flex-col gap-1">
+                                        {visible.ctr && <span className="text-orange-500">{(maxCTR/1.1).toFixed(1)}%</span>}
+                                    </div>
+                                    <span className="text-slate-400">0%</span>
+                                </div>
+
+                                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32 overflow-visible cursor-crosshair">
+                                    {/* Zero Baseline */}
+                                    <line x1="0" y1={height} x2="100" y2={height} stroke="#cbd5e1" strokeWidth="0.5" />
+                                    
+                                    {expanded && (
+                                        <g key={animKey}>
+                                            {visible.conv && <polyline points={getPath('conv', maxConv)} fill="none" stroke="#10b981" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.1s'}} />}
+                                            {visible.cpa && <polyline points={getPath('cpa', maxCPA)} fill="none" stroke="#3b82f6" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.3s'}} />}
+                                            {visible.ctr && <polyline points={getPath('ctr', maxCTR)} fill="none" stroke="#f97316" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="draw-path" style={{animationDelay: '0.5s'}} />}
+                                            
+                                            {activeData && <line x1={activeX} y1="0" x2={activeX} y2={height} stroke="#64748b" strokeWidth="0.5" strokeDasharray="2" />}
+                                        </g>
+                                    )}
+                                </svg>
+                            </div>
 
                             <div className="flex justify-between text-[8px] text-gray-400 mt-2 font-mono uppercase">
                                 <span>{data[0].date.toLocaleDateString(undefined, {day:'numeric', month:'short'})}</span>
@@ -486,7 +498,7 @@
                     <div className="grid grid-cols-3 gap-3">
                         <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
                         <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
-                        <KPICard label="CTR" value={`${client.ctr.toFixed(2)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(2)}%` : null} details={{ google: `${(gCtr).toFixed(2)}%`, facebook: `${(fCtr).toFixed(2)}%` }} />
+                        <KPICard label="CTR" value={`${client.ctr.toFixed(0)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(0)}%` : null} details={{ google: `${(gCtr).toFixed(0)}%`, facebook: `${(fCtr).toFixed(0)}%` }} />
                     </div>
                     
                     <TrendChart dailyData={client.dailyData} />
@@ -701,7 +713,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 
                         }));
 
                         let gDaily = 0, fDaily = 0;
@@ -724,7 +736,7 @@
 
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
-                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) : 0;
+                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) * 100 : 0;
 
                         return {
                             ...client, 
@@ -744,7 +756,7 @@
                             careConversions: g.care + f.care,
                             nursingConversions: g.nurse + f.nurse,
                             supportConversions: g.support + f.support,
-                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) : 0,
+                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) * 100 : 0,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
