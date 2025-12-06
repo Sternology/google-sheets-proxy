@@ -59,7 +59,7 @@
         };
 
         const mapRow = (headers, row) => {
-            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', RawCare: 0, Clicks: 0, Impressions: 0 };
+            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', RawCare: 0 };
             headers.forEach((h, i) => {
                 if (!h || !row[i]) return;
                 const header = h.trim();
@@ -82,14 +82,7 @@
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
-                        // CLICKS & IMPRESSIONS (New Logic for Accurate CTR)
-                        else if (lower === 'clicks' || lower.includes('link clicks')) {
-                            obj.Clicks = num;
-                        }
-                        else if (lower === 'impressions' || lower === 'impr.') {
-                            obj.Impressions = num;
-                        }
-                        // FALLBACK CTR (If clicks/imps missing)
+                        // CTR
                         else if (lower.includes('ctr')) {
                             if (num <= 1) obj.CTR = num * 100;
                             else obj.CTR = num;
@@ -114,6 +107,26 @@
         };
 
         // --- COMPONENTS ---
+
+        // RESTORED COMPONENT: StaleDataAlert
+        const StaleDataAlert = ({ staleTabs }) => {
+            if (!staleTabs || staleTabs.length === 0) return null;
+            return (
+                <div className="mb-6 bg-red-900/30 border border-red-500/50 rounded-xl p-4 flex items-start gap-3 animate-pulse text-white">
+                    <span className="text-2xl">⚠️</span>
+                    <div>
+                        <div className="text-red-400 font-bold text-sm uppercase tracking-wide mb-1">Data Freshness Warning</div>
+                        <div className="text-red-100 text-sm">The following tabs have not updated with data for today:</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            {staleTabs.map(tab => (
+                                <span key={tab} className="bg-red-900 text-red-200 px-2 py-1 rounded text-xs border border-red-700">{tab}</span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
@@ -127,21 +140,21 @@
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Campaign</th>
                                     <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Clicks</th>
-                                    <th className="pb-2 text-right">Imps</th>
-                                    <th className="pb-2 text-right">Apps</th>
+                                    <th className="pb-2 text-right">Raw</th>
+                                    <th className="pb-2 text-right">Counted</th>
+                                    <th className="pb-2 pl-4">Note</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
                                 {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-800">
+                                    <tr key={i} className="hover:bg-slate-700">
                                         <td className="py-2 text-blue-400">{log.client}</td>
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-blue-300">{log.clicks > 0 ? log.clicks : '-'}</td>
-                                        <td className="py-2 text-right text-purple-300">{log.imps > 0 ? log.imps : '-'}</td>
+                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
                                         <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -180,8 +193,7 @@
             const getPath = (key, maxVal) => {
                 return data.map((d, i) => {
                     const x = (i / (data.length - 1)) * width;
-                    const val = d[key] || 0;
-                    const y = height - (val / maxVal) * height;
+                    const y = height - ((d[key] || 0) / maxVal) * height;
                     return `${x},${y}`;
                 }).join(" ");
             };
@@ -241,13 +253,11 @@
                                         {visible.conv && <span className="text-emerald-600">{Math.round(maxConv/1.1)}</span>}
                                         {visible.cpa && <span className="text-blue-600">£{Math.round(maxCPA/1.1)}</span>}
                                     </div>
-                                    <span className="text-slate-400">0</span>
                                 </div>
                                 <div className="absolute -right-2 top-0 bottom-0 flex flex-col justify-between text-[8px] font-bold font-mono h-32 translate-x-full text-left">
                                     <div className="flex flex-col gap-1">
                                         {visible.ctr && <span className="text-orange-500">{Math.round(maxCTR/1.1)}%</span>}
                                     </div>
-                                    <span className="text-slate-400">0%</span>
                                 </div>
 
                                 <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32 overflow-visible cursor-crosshair">
@@ -679,7 +689,7 @@
                                     if (d.Cost > 0 || d.CareApps > 0 || d.NurseApps > 0 || d.RawCare > 0) {
                                         tempLogs.push({
                                             client: client.name, tab: tabName, date: d.Date.toLocaleDateString('en-GB'),
-                                            camp: d.Campaign || d.Adset, spend: d.Cost, careApps: d.CareApps, rawCare: d.RawCare, ctr: d.CTR, clicks: d.Clicks, imps: d.Impressions,
+                                            camp: d.Campaign || d.Adset, spend: d.Cost, careApps: d.CareApps, rawCare: d.RawCare,
                                             note: isConv ? 'Conv Tab' : d.RawCare > 50 ? 'High Val Ignored' : 'Matched'
                                         });
                                     }
@@ -694,22 +704,12 @@
                                             target.care += d.CareApps; target.nurse += d.NurseApps;
                                         } else {
                                             day.cost += d.Cost;
-                                            // Weighted CTR Logic
-                                            if (d.CTR > 0) { 
-                                                // Assuming equal weight per row if impressions missing
-                                                day.ctrSum += d.CTR; 
-                                                day.ctrCount++; 
-                                            }
+                                            if (d.CTR > 0) { day.ctrSum += d.CTR; day.ctrCount++; }
                                             const c = d.CareApps + d.NurseApps + d.SupportApps;
                                             day.conv += c;
                                             const target = tabName.includes('Google') ? g : f;
                                             target.spend += d.Cost;
-                                            
-                                            // Add to Platform Totals
-                                            if (d.CTR > 0) {
-                                                target.ctrSum += d.CTR;
-                                                target.ctrCount++;
-                                            }
+                                            if (d.CTR > 0) { target.ctrSum += d.CTR; target.ctrCount++; }
                                             target.care += d.CareApps; target.nurse += d.NurseApps; target.support += d.SupportApps;
                                         }
                                     }
@@ -719,10 +719,7 @@
                                     if (isConv) { prev.careConversions += d.CareApps; prev.nursingConversions += d.NurseApps; }
                                     else {
                                         prev.total += d.Cost;
-                                        if (d.CTR > 0) { 
-                                            prev.ctrSum += d.CTR; 
-                                            prev.ctrCount++; 
-                                        }
+                                        if (d.CTR > 0) { prev.ctrSum += d.CTR; prev.ctrCount++; }
                                         prev.careConversions += d.CareApps; prev.nursingConversions += d.NurseApps; prev.supportConversions += d.SupportApps;
                                     }
                                 }
@@ -748,7 +745,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 
                         }));
 
                         let gDaily = 0, fDaily = 0;
@@ -771,9 +768,7 @@
 
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
-                        
-                        // Fix for Previous CTR Scaling
-                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) : 0;
+                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) * 100 : 0;
 
                         return {
                             ...client, 
@@ -793,9 +788,7 @@
                             careConversions: g.care + f.care,
                             nursingConversions: g.nurse + f.nurse,
                             supportConversions: g.support + f.support,
-                            
-                            // CALCULATE AGGREGATE CTR
-                            ctr: (g.ctrCount + f.ctrCount) > 0 ? ((g.ctrSum + f.ctrSum) / (g.ctrCount + f.ctrCount)) : 0,
+                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) * 100 : 0,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
