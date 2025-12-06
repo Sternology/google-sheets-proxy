@@ -10,17 +10,26 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; font-family: -apple-system, system-ui, sans-serif; }
+        
+        /* Transitions */
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
+        .transition-all { transition: all 0.3s ease; }
+        
+        /* Card Flip */
         .perspective-1000 { perspective: 1000px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
+
+        /* Graph Animation */
         .draw-path {
             stroke-dasharray: 2000;
             stroke-dashoffset: 2000;
             animation: draw 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
-        @keyframes draw { to { stroke-dashoffset: 0; } }
+        @keyframes draw {
+            to { stroke-dashoffset: 0; }
+        }
     </style>
 </head>
 <body class="p-6">
@@ -50,7 +59,7 @@
         };
 
         const mapRow = (headers, row) => {
-            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', RawCare: 0 };
+            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', RawCare: 0, Clicks: 0, Impressions: 0 };
             headers.forEach((h, i) => {
                 if (!h || !row[i]) return;
                 const header = h.trim();
@@ -63,18 +72,29 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
+                        // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
                             if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
+                        // BUDGET
                         else if (lower.includes('budget')) {
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
+                        // CLICKS & IMPRESSIONS (New Logic for Accurate CTR)
+                        else if (lower === 'clicks' || lower.includes('link clicks')) {
+                            obj.Clicks = num;
+                        }
+                        else if (lower === 'impressions' || lower === 'impr.') {
+                            obj.Impressions = num;
+                        }
+                        // FALLBACK CTR (If clicks/imps missing)
                         else if (lower.includes('ctr')) {
                             if (num <= 1) obj.CTR = num * 100;
                             else obj.CTR = num;
                         }
+                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
                                 if (num < 50) {
@@ -94,34 +114,6 @@
         };
 
         // --- COMPONENTS ---
-        
-        // NEW: Data Freshness Alert Component
-        const StaleDataAlert = ({ staleTabs }) => {
-            if (!staleTabs || staleTabs.length === 0) return null;
-            
-            return (
-                <div className="mb-6 bg-red-900/30 border border-red-500/50 rounded-xl p-4 flex items-start gap-3 animate-pulse">
-                    <span className="text-2xl">⚠️</span>
-                    <div>
-                        <div className="text-red-400 font-bold text-sm uppercase tracking-wide mb-1">Data Freshness Warning</div>
-                        <div className="text-red-100 text-sm">
-                            The following tabs have not updated with data for today:
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                            {staleTabs.map(tab => (
-                                <span key={tab} className="bg-red-900 text-red-200 px-2 py-1 rounded text-xs border border-red-700">
-                                    {tab}
-                                </span>
-                            ))}
-                        </div>
-                        <div className="mt-2 text-xs text-red-400/70 italic">
-                            Check Porter Metrics / Google Sheets connections.
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
@@ -132,26 +124,24 @@
                             <thead>
                                 <tr className="text-slate-500">
                                     <th className="pb-2">Client</th>
-                                    <th className="pb-2">Source</th>
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Campaign</th>
                                     <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right">Raw</th>
-                                    <th className="pb-2 text-right">Counted</th>
-                                    <th className="pb-2 pl-4">Note</th>
+                                    <th className="pb-2 text-right">Clicks</th>
+                                    <th className="pb-2 text-right">Imps</th>
+                                    <th className="pb-2 text-right">Apps</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-700">
+                            <tbody className="divide-y divide-slate-800">
                                 {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-700">
+                                    <tr key={i} className="hover:bg-slate-800">
                                         <td className="py-2 text-blue-400">{log.client}</td>
-                                        <td className="py-2 opacity-70">{log.tab}</td>
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-yellow-400">{log.rawCare > 0 ? log.rawCare : '-'}</td>
+                                        <td className="py-2 text-right text-blue-300">{log.clicks > 0 ? log.clicks : '-'}</td>
+                                        <td className="py-2 text-right text-purple-300">{log.imps > 0 ? log.imps : '-'}</td>
                                         <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
-                                        <td className="py-2 pl-4 italic opacity-50">{log.note}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -190,7 +180,8 @@
             const getPath = (key, maxVal) => {
                 return data.map((d, i) => {
                     const x = (i / (data.length - 1)) * width;
-                    const y = height - ((d[key] || 0) / maxVal) * height;
+                    const val = d[key] || 0;
+                    const y = height - (val / maxVal) * height;
                     return `${x},${y}`;
                 }).join(" ");
             };
@@ -250,11 +241,13 @@
                                         {visible.conv && <span className="text-emerald-600">{Math.round(maxConv/1.1)}</span>}
                                         {visible.cpa && <span className="text-blue-600">£{Math.round(maxCPA/1.1)}</span>}
                                     </div>
+                                    <span className="text-slate-400">0</span>
                                 </div>
                                 <div className="absolute -right-2 top-0 bottom-0 flex flex-col justify-between text-[8px] font-bold font-mono h-32 translate-x-full text-left">
                                     <div className="flex flex-col gap-1">
                                         {visible.ctr && <span className="text-orange-500">{Math.round(maxCTR/1.1)}%</span>}
                                     </div>
+                                    <span className="text-slate-400">0%</span>
                                 </div>
 
                                 <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-32 overflow-visible cursor-crosshair">
@@ -509,7 +502,7 @@
                     <div className="grid grid-cols-3 gap-3">
                         <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
                         <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
-                        <KPICard label="CTR" value={`${client.ctr.toFixed(0)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(0)}%` : null} details={{ google: `${(gCtr).toFixed(0)}%`, facebook: `${(fCtr).toFixed(0)}%` }} />
+                        <KPICard label="CTR" value={`${client.ctr.toFixed(2)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(2)}%` : null} details={{ google: `${(gCtr*100).toFixed(2)}%`, facebook: `${(fCtr*100).toFixed(2)}%` }} />
                     </div>
                     
                     <TrendChart dailyData={client.dailyData} />
@@ -593,7 +586,6 @@
                     const cache = {};
                     let maxTs = 0;
                     
-                    // FRESHNESS CHECK
                     const tabsChecked = new Set();
                     const stale = new Set();
 
@@ -604,18 +596,15 @@
                                 if (tabsChecked.has(tabName)) return;
                                 tabsChecked.add(tabName);
                                 
-                                const range = tabName.includes('FB') ? `${tabName}!A:H` : `${tabName}!A:F`;
+                                const range = (prefix + ' ' + suffix).includes('FB') ? `${prefix} ${suffix}!A:H` : `${prefix} ${suffix}!A:F`;
                                 const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
                                 const json = await res.json();
                                 if (json.values) {
                                     cache[tabName] = json.values;
-                                    
-                                    // Check freshness
                                     const lastDate = parseSheetDate(json.values[json.values.length-1][0]);
                                     if (lastDate) {
-                                        const now = new Date(); // Compare to REAL time, not file time
-                                        const diff = (now - lastDate) / (1000 * 60 * 60 * 24);
-                                        if (diff > 1.5) stale.add(tabName); // Warning if > 1.5 days old
+                                        const now = new Date();
+                                        if ((now - lastDate) / (1000 * 60 * 60 * 24) > 1.5) stale.add(tabName);
                                     }
                                 }
                             } catch(e) {}
@@ -623,7 +612,7 @@
                         const fetchConv = async () => {
                             try {
                                 const tabName = `${prefix} Google Conversions`;
-                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(tabName + '!A:E')}&apiKey=${KEY}`);
+                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
                                 const json = await res.json();
                                 if (json.values) cache[tabName] = json.values;
                             } catch(e) {}
@@ -690,7 +679,7 @@
                                     if (d.Cost > 0 || d.CareApps > 0 || d.NurseApps > 0 || d.RawCare > 0) {
                                         tempLogs.push({
                                             client: client.name, tab: tabName, date: d.Date.toLocaleDateString('en-GB'),
-                                            camp: d.Campaign || d.Adset, spend: d.Cost, careApps: d.CareApps, rawCare: d.RawCare,
+                                            camp: d.Campaign || d.Adset, spend: d.Cost, careApps: d.CareApps, rawCare: d.RawCare, ctr: d.CTR, clicks: d.Clicks, imps: d.Impressions,
                                             note: isConv ? 'Conv Tab' : d.RawCare > 50 ? 'High Val Ignored' : 'Matched'
                                         });
                                     }
@@ -705,12 +694,22 @@
                                             target.care += d.CareApps; target.nurse += d.NurseApps;
                                         } else {
                                             day.cost += d.Cost;
-                                            if (d.CTR > 0) { day.ctrSum += d.CTR; day.ctrCount++; }
+                                            // Weighted CTR Logic
+                                            if (d.CTR > 0) { 
+                                                // Assuming equal weight per row if impressions missing
+                                                day.ctrSum += d.CTR; 
+                                                day.ctrCount++; 
+                                            }
                                             const c = d.CareApps + d.NurseApps + d.SupportApps;
                                             day.conv += c;
                                             const target = tabName.includes('Google') ? g : f;
                                             target.spend += d.Cost;
-                                            if (d.CTR > 0) { target.ctrSum += d.CTR; target.ctrCount++; }
+                                            
+                                            // Add to Platform Totals
+                                            if (d.CTR > 0) {
+                                                target.ctrSum += d.CTR;
+                                                target.ctrCount++;
+                                            }
                                             target.care += d.CareApps; target.nurse += d.NurseApps; target.support += d.SupportApps;
                                         }
                                     }
@@ -720,7 +719,10 @@
                                     if (isConv) { prev.careConversions += d.CareApps; prev.nursingConversions += d.NurseApps; }
                                     else {
                                         prev.total += d.Cost;
-                                        if (d.CTR > 0) { prev.ctrSum += d.CTR; prev.ctrCount++; }
+                                        if (d.CTR > 0) { 
+                                            prev.ctrSum += d.CTR; 
+                                            prev.ctrCount++; 
+                                        }
                                         prev.careConversions += d.CareApps; prev.nursingConversions += d.NurseApps; prev.supportConversions += d.SupportApps;
                                     }
                                 }
@@ -746,7 +748,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 
                         }));
 
                         let gDaily = 0, fDaily = 0;
@@ -769,7 +771,9 @@
 
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
-                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) * 100 : 0;
+                        
+                        // Fix for Previous CTR Scaling
+                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) : 0;
 
                         return {
                             ...client, 
@@ -789,7 +793,9 @@
                             careConversions: g.care + f.care,
                             nursingConversions: g.nurse + f.nurse,
                             supportConversions: g.support + f.support,
-                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) * 100 : 0,
+                            
+                            // CALCULATE AGGREGATE CTR
+                            ctr: (g.ctrCount + f.ctrCount) > 0 ? ((g.ctrSum + f.ctrSum) / (g.ctrCount + f.ctrCount)) : 0,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
