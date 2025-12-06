@@ -10,26 +10,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; font-family: -apple-system, system-ui, sans-serif; }
-        
-        /* Transitions */
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
-        .transition-all { transition: all 0.3s ease; }
-        
-        /* Card Flip */
         .perspective-1000 { perspective: 1000px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
-
-        /* Graph Animation */
         .draw-path {
             stroke-dasharray: 2000;
             stroke-dashoffset: 2000;
             animation: draw 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
-        @keyframes draw {
-            to { stroke-dashoffset: 0; }
-        }
+        @keyframes draw { to { stroke-dashoffset: 0; } }
     </style>
 </head>
 <body class="p-6">
@@ -72,25 +63,21 @@
                 else {
                     const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
                     if (!isNaN(num)) {
-                        // SPEND
                         if (lower.includes('amount spent') || lower === 'cost') {
                             if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
                             else obj.Cost = num;
                         }
-                        // BUDGET
                         else if (lower.includes('budget')) {
                             if (lower.includes('adset')) obj.DailyBudget = num / 100;
                             else obj.DailyBudget = num;
                         }
-                        // CTR: Normalize everything to 0-100 scale (e.g. 3.5)
                         else if (lower.includes('ctr')) {
-                            if (num <= 1) obj.CTR = num * 100; // 0.035 -> 3.5
-                            else obj.CTR = num; // 3.5 -> 3.5
+                            if (num <= 1) obj.CTR = num * 100;
+                            else obj.CTR = num;
                         }
-                        // CONVERSIONS
                         else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
                             if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                if (num < 50) { // Allow reasonable daily counts
+                                if (num < 50) {
                                     if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
                                     else if (header.includes('Support Worker')) obj.SupportApps = num;
                                     else if (header.includes('Care') || lower.includes('care')) {
@@ -107,6 +94,34 @@
         };
 
         // --- COMPONENTS ---
+        
+        // NEW: Data Freshness Alert Component
+        const StaleDataAlert = ({ staleTabs }) => {
+            if (!staleTabs || staleTabs.length === 0) return null;
+            
+            return (
+                <div className="mb-6 bg-red-900/30 border border-red-500/50 rounded-xl p-4 flex items-start gap-3 animate-pulse">
+                    <span className="text-2xl">⚠️</span>
+                    <div>
+                        <div className="text-red-400 font-bold text-sm uppercase tracking-wide mb-1">Data Freshness Warning</div>
+                        <div className="text-red-100 text-sm">
+                            The following tabs have not updated with data for today:
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            {staleTabs.map(tab => (
+                                <span key={tab} className="bg-red-900 text-red-200 px-2 py-1 rounded text-xs border border-red-700">
+                                    {tab}
+                                </span>
+                            ))}
+                        </div>
+                        <div className="mt-2 text-xs text-red-400/70 italic">
+                            Check Porter Metrics / Google Sheets connections.
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
         const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
@@ -117,6 +132,7 @@
                             <thead>
                                 <tr className="text-slate-500">
                                     <th className="pb-2">Client</th>
+                                    <th className="pb-2">Source</th>
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Campaign</th>
                                     <th className="pb-2 text-right">Spend</th>
@@ -125,10 +141,11 @@
                                     <th className="pb-2 pl-4">Note</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-800">
+                            <tbody className="divide-y divide-slate-700">
                                 {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-800">
+                                    <tr key={i} className="hover:bg-slate-700">
                                         <td className="py-2 text-blue-400">{log.client}</td>
+                                        <td className="py-2 opacity-70">{log.tab}</td>
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
@@ -163,7 +180,6 @@
 
             const data = [...dailyData].sort((a,b) => a.date - b.date).slice(0, -1);
             
-            // Calculate Max with some headroom
             const maxConv = Math.max(1, ...data.map(d => d.conv)) * 1.1;
             const maxCPA = Math.max(1, ...data.map(d => d.cpa)) * 1.1;
             const maxCTR = Math.max(1, ...data.map(d => d.ctr)) * 1.1;
@@ -228,7 +244,6 @@
                                 </div>
                             )}
 
-                            {/* SCALES */}
                             <div className="relative mt-6 mx-2">
                                 <div className="absolute -left-2 top-0 bottom-0 flex flex-col justify-between text-[8px] font-bold font-mono h-32 -translate-x-full text-right">
                                     <div className="flex flex-col gap-1">
@@ -494,7 +509,7 @@
                     <div className="grid grid-cols-3 gap-3">
                         <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
                         <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
-                        <KPICard label="CTR" value={`${client.ctr.toFixed(2)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(2)}%` : null} details={{ google: `${(gCtr).toFixed(2)}%`, facebook: `${(fCtr).toFixed(2)}%` }} />
+                        <KPICard label="CTR" value={`${client.ctr.toFixed(0)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(0)}%` : null} details={{ google: `${(gCtr).toFixed(0)}%`, facebook: `${(fCtr).toFixed(0)}%` }} />
                     </div>
                     
                     <TrendChart dailyData={client.dailyData} />
@@ -525,6 +540,7 @@
             const [latestDataDate, setLatestDataDate] = useState(null);
             const [debug, setDebug] = useState(false);
             const [debugLogs, setDebugLogs] = useState([]);
+            const [staleTabs, setStaleTabs] = useState([]);
             
             const PROXY = 'https://sheets-proxy-ria9.vercel.app/api/sheets-proxy';
             const SHEET = '1nbVrRxhIh2RLa5qtOsaM1N_UmqljztVwxPbQRCnkBcs';
@@ -576,25 +592,46 @@
                     const prefixes = [...new Set(clients.map(c => c.prefix))];
                     const cache = {};
                     let maxTs = 0;
+                    
+                    // FRESHNESS CHECK
+                    const tabsChecked = new Set();
+                    const stale = new Set();
 
                     await Promise.all(prefixes.map(async prefix => {
                         const fetchRange = async (suffix) => {
                             try {
-                                const range = (prefix + ' ' + suffix).includes('FB') ? `${prefix} ${suffix}!A:H` : `${prefix} ${suffix}!A:F`;
+                                const tabName = `${prefix} ${suffix}`;
+                                if (tabsChecked.has(tabName)) return;
+                                tabsChecked.add(tabName);
+                                
+                                const range = tabName.includes('FB') ? `${tabName}!A:H` : `${tabName}!A:F`;
                                 const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
                                 const json = await res.json();
-                                if (json.values) cache[`${prefix} ${suffix}`] = json.values;
+                                if (json.values) {
+                                    cache[tabName] = json.values;
+                                    
+                                    // Check freshness
+                                    const lastDate = parseSheetDate(json.values[json.values.length-1][0]);
+                                    if (lastDate) {
+                                        const now = new Date(); // Compare to REAL time, not file time
+                                        const diff = (now - lastDate) / (1000 * 60 * 60 * 24);
+                                        if (diff > 1.5) stale.add(tabName); // Warning if > 1.5 days old
+                                    }
+                                }
                             } catch(e) {}
                         };
                         const fetchConv = async () => {
                             try {
-                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(prefix + ' Google Conversions!A:E')}&apiKey=${KEY}`);
+                                const tabName = `${prefix} Google Conversions`;
+                                const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(tabName + '!A:E')}&apiKey=${KEY}`);
                                 const json = await res.json();
-                                if (json.values) cache[`${prefix} Google Conversions`] = json.values;
+                                if (json.values) cache[tabName] = json.values;
                             } catch(e) {}
                         };
                         await Promise.all([fetchRange('Google'), fetchRange('FB'), fetchConv()]);
                     }));
+                    
+                    setStaleTabs(Array.from(stale));
 
                     Object.values(cache).forEach(rows => {
                         if (!rows || rows.length < 2) return;
@@ -709,7 +746,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
-                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) : 0 // Keep Decimal 0-100 scale
+                            ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0 
                         }));
 
                         let gDaily = 0, fDaily = 0;
@@ -732,7 +769,7 @@
 
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
-                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) : 0; // Correct: No *100 here if already normalized
+                        prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) * 100 : 0;
 
                         return {
                             ...client, 
@@ -752,7 +789,7 @@
                             careConversions: g.care + f.care,
                             nursingConversions: g.nurse + f.nurse,
                             supportConversions: g.support + f.support,
-                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) : 0,
+                            ctr: (g.ctrCount+f.ctrCount) > 0 ? ((g.ctrSum+f.ctrSum)/(g.ctrCount+f.ctrCount)) * 100 : 0,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
@@ -777,6 +814,10 @@
 
             return (
                 <div className="max-w-7xl mx-auto">
+                    <div className="mb-6">
+                        <StaleDataAlert staleTabs={staleTabs} />
+                    </div>
+
                     <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
                         <h1 className="text-3xl font-bold text-gray-800 tracking-tight text-white">Client Budgets</h1>
                         <div className="flex gap-4">
