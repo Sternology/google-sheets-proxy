@@ -45,7 +45,7 @@
             return isNaN(d.getTime()) ? null : d;
         };
 
-        // --- ROW MAPPER ---
+        // --- ROBUST ROW MAPPER ---
         const mapRow = (headers, row) => {
             const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', Clicks: 0, Impressions: 0 };
             
@@ -64,8 +64,12 @@
                 adset: findIdx(['adset name']),
                 cost: findIdx(['amount spent (gbp)', 'cost']),
                 budget: findIdx(['adset daily budget', 'budget amount']),
+                
+                // Metrics - Priority List
                 clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'unique', 'rate']), 
                 impressions: findIdx(['impressions', 'impr.']),
+                
+                // Conversions
                 care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
                 nurse: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('nurse') || h.includes('nursing'))),
                 support: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('support'))),
@@ -81,19 +85,23 @@
                 return isNaN(n) ? 0 : n;
             };
 
+            // Spend (Pence Check)
             const rawCost = getNum(idx.cost);
             const isFbSpend = idx.cost > -1 && hNorm[idx.cost].includes('amount spent');
             if (isFbSpend && rawCost > 500) obj.Cost = rawCost / 100;
             else obj.Cost = rawCost;
 
+            // Budget
             const rawBudget = getNum(idx.budget);
             const isFbBudget = idx.budget > -1 && hNorm[idx.budget].includes('adset');
             if (isFbBudget && rawBudget > 500) obj.DailyBudget = rawBudget / 100;
             else obj.DailyBudget = rawBudget;
 
+            // Metrics
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.impressions);
 
+            // Conversions (Anti-Inflation)
             const getConv = (i) => {
                 const n = getNum(i);
                 return n < 50 ? n : 0; 
@@ -157,6 +165,7 @@
                                 </div>
                                 <div className="text-2xl font-bold">{value}</div>
                             </div>
+                            
                             {trend !== undefined && !isNaN(trend) && isFinite(trend) && (
                                 <div className={`w-full py-1.5 px-2 rounded text-xs font-bold flex items-center justify-between ${trendColor}`}>
                                     <span className="flex items-center gap-1">{arrow} {Math.abs(trend).toFixed(0)}%</span>
@@ -602,16 +611,19 @@
                                 if (json.values) {
                                     cache[tabName] = json.values;
                                     
-                                    // FRESHNESS CHECK (Last 5 rows)
+                                    // REFINED FRESHNESS CHECK: Look at entire column for max date
                                     let latest = 0;
-                                    for(let i=1; i<=5; i++) {
-                                        if (json.values.length - i >= 0) {
-                                            const d = parseSheetDate(json.values[json.values.length-i][0]);
-                                            if (d && d.getTime() > latest) latest = d.getTime();
-                                        }
+                                    // Scan rows from bottom up to find latest date (skip header)
+                                    for(let i=json.values.length-1; i>0; i--) {
+                                        const d = parseSheetDate(json.values[i][0]);
+                                        if (d && d.getTime() > latest) latest = d.getTime();
+                                        // Optimization: If we found a date and moved 50 rows up, assumes unsorted but clustered
+                                        // For safety with completely random sort, we just scan all. It's fast enough for <10k rows.
                                     }
+                                    
                                     if (latest > 0) {
                                         const now = new Date();
+                                        // 1.5 days tolerance
                                         if ((now.getTime() - latest) / (1000 * 60 * 60 * 24) > 1.5) {
                                             stale.push({ name: tabName, date: new Date(latest).toLocaleDateString() });
                                         }
@@ -718,6 +730,7 @@
                                             target.care += (d.CareApps || 0); target.nurse += (d.NurseApps || 0);
                                         } else {
                                             day.cost += (d.Cost || 0);
+                                            // Daily CTR using Clicks/Imps
                                             if (d.Clicks > 0 && d.Impressions > 0) {
                                                 day.ctrSum += d.Clicks;
                                                 day.ctrCount += d.Impressions;
