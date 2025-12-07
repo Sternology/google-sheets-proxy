@@ -10,12 +10,23 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0f172a; font-family: -apple-system, system-ui, sans-serif; }
+        
+        /* Transitions */
         .gauge-fill { transition: stroke-dashoffset 0.8s ease; }
+        .transition-all { transition: all 0.3s ease; }
+        
+        /* Card Flip */
         .perspective-1000 { perspective: 1000px; }
         .transform-style-3d { transform-style: preserve-3d; }
         .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
         .rotate-y-180 { transform: rotateY(180deg); }
-        .draw-path { stroke-dasharray: 2000; stroke-dashoffset: 2000; animation: draw 2s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+
+        /* Graph Animation */
+        .draw-path {
+            stroke-dasharray: 2000;
+            stroke-dashoffset: 2000;
+            animation: draw 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
         @keyframes draw { to { stroke-dashoffset: 0; } }
     </style>
 </head>
@@ -31,6 +42,7 @@
 
         const normalize = (text) => {
             if (!text) return '';
+            // Remove extra spaces to match "Conversion  2025" with "Conversion 2025"
             return text.toLowerCase().replace(/–/g, '-').replace(/—/g, '-').replace(/\|/g, '').replace(/\s+/g, ' ').trim();
         };
 
@@ -46,49 +58,70 @@
         };
 
         const mapRow = (headers, row) => {
-            const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', RawCare: 0, Clicks: 0, Impressions: 0 };
+            const obj = { Date: null, Cost: 0, CTR: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', RawCare: 0, Clicks: 0, Impressions: 0 };
+            
+            // 1. Identify Column Indexes dynamically
+            const idx = { date: -1, cost: -1, budget: -1, adset: -1, camp: -1, clicks: -1, imps: -1, care: -1, nurse: -1, support: -1, ctr: -1 };
+            
             headers.forEach((h, i) => {
-                if (!h || !row[i]) return;
-                const header = h.trim();
-                const lower = header.toLowerCase();
-                const val = row[i];
-
-                if (lower === 'date' || lower === 'day') obj.Date = parseSheetDate(val);
-                else if (lower.includes('adset name')) obj.Adset = val;
-                else if (lower.includes('campaign')) obj.Campaign = val;
-                else {
-                    const num = parseFloat(String(val).replace(/[%£$,]/g, ''));
-                    if (!isNaN(num)) {
-                        // SPEND
-                        if (lower.includes('amount spent') || lower === 'cost') {
-                            if (num > 500 && lower.includes('amount spent')) obj.Cost = num / 100;
-                            else obj.Cost = num;
-                        }
-                        // BUDGET
-                        else if (lower.includes('budget')) {
-                            if (lower.includes('adset')) obj.DailyBudget = num / 100;
-                            else obj.DailyBudget = num;
-                        }
-                        // CLICKS & IMPRESSIONS (New Logic)
-                        else if (lower === 'clicks' || lower === 'link clicks') obj.Clicks = num;
-                        else if (lower === 'impressions' || lower === 'impr.') obj.Impressions = num;
-                        
-                        // CONVERSIONS
-                        else if (lower.includes('conversion') || lower.includes('application') || lower.includes('app')) {
-                            if (!lower.includes('cost') && !lower.includes('rate') && !lower.includes('value')) {
-                                if (num < 50) {
-                                    if (lower.includes('nurse') || header.includes('Nursing')) obj.NurseApps = num;
-                                    else if (header.includes('Support Worker')) obj.SupportApps = num;
-                                    else if (header.includes('Care') || lower.includes('care')) {
-                                        obj.RawCare = num;
-                                        obj.CareApps = num;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                const lower = (h || '').trim().toLowerCase();
+                if (!lower) return;
+                
+                if (lower === 'date' || lower === 'day') idx.date = i;
+                else if (lower.includes('adset name')) idx.adset = i;
+                else if (lower.includes('campaign')) idx.camp = i;
+                else if (lower.includes('amount spent') || lower === 'cost') idx.cost = i;
+                else if (lower.includes('budget')) idx.budget = i;
+                else if (lower === 'link clicks' || lower === 'clicks') idx.clicks = i;
+                else if (lower === 'impressions' || lower === 'impr.') idx.imps = i;
+                else if (lower.includes('ctr')) idx.ctr = i;
+                else if (lower.includes('conversion') || lower.includes('application')) {
+                    if (lower.includes('nurse')) idx.nurse = i;
+                    else if (lower.includes('support')) idx.support = i;
+                    else if (lower.includes('care')) idx.care = i;
                 }
             });
+
+            // 2. Extract Data
+            if (idx.date > -1) obj.Date = parseSheetDate(row[idx.date]);
+            if (idx.camp > -1) obj.Campaign = row[idx.camp];
+            if (idx.adset > -1) obj.Adset = row[idx.adset]; // Now correctly found!
+
+            const getNum = (i) => {
+                if (i === -1 || !row[i]) return 0;
+                const n = parseFloat(String(row[i]).replace(/[%£$,]/g, ''));
+                return isNaN(n) ? 0 : n;
+            };
+
+            // Spend (Pence Check)
+            const rawCost = getNum(idx.cost);
+            const headerCost = idx.cost > -1 ? headers[idx.cost].toLowerCase() : '';
+            if (rawCost > 500 && headerCost.includes('amount spent')) obj.Cost = rawCost / 100;
+            else obj.Cost = rawCost;
+
+            // Budget
+            const rawBudget = getNum(idx.budget);
+            if (rawBudget > 500 && idx.budget > -1 && headers[idx.budget].toLowerCase().includes('adset')) obj.DailyBudget = rawBudget / 100;
+            else obj.DailyBudget = rawBudget;
+
+            // Metrics
+            obj.Clicks = getNum(idx.clicks);
+            obj.Impressions = getNum(idx.imps);
+
+            // Fallback CTR
+            const rawCtr = getNum(idx.ctr);
+            if (rawCtr <= 1) obj.CTR = rawCtr * 100; else obj.CTR = rawCtr;
+
+            // Conversions (Anti-Inflation < 50)
+            const getConv = (i) => {
+                const n = getNum(i);
+                return (n < 50) ? n : 0;
+            };
+            obj.CareApps = getConv(idx.care);
+            obj.RawCare = getNum(idx.care);
+            obj.NurseApps = getConv(idx.nurse);
+            obj.SupportApps = getConv(idx.support);
+
             return obj;
         };
 
@@ -108,7 +141,8 @@
                                     <th className="pb-2 text-right">Spend</th>
                                     <th className="pb-2 text-right text-blue-400">Clicks</th>
                                     <th className="pb-2 text-right text-purple-400">Imps</th>
-                                    <th className="pb-2 text-right font-bold text-white">Apps</th>
+                                    <th className="pb-2 text-right text-orange-400">CTR (Calc)</th>
+                                    <th className="pb-2 pl-4">Apps</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
@@ -118,9 +152,12 @@
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-blue-400">{log.clicks > 0 ? log.clicks : '-'}</td>
-                                        <td className="py-2 text-right text-purple-400">{log.imps > 0 ? log.imps : '-'}</td>
-                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                        <td className="py-2 text-right text-blue-400">{log.clicks || '-'}</td>
+                                        <td className="py-2 text-right text-purple-400">{log.imps || '-'}</td>
+                                        <td className="py-2 text-right text-orange-400 font-bold">
+                                            {(log.clicks > 0 && log.imps > 0) ? `${((log.clicks/log.imps)*100).toFixed(2)}%` : '-'}
+                                        </td>
+                                        <td className="py-2 pl-4 text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -471,8 +508,8 @@
 
             const gCpa = gVal > 0 ? client.google / gVal : 0;
             const fCpa = fVal > 0 ? client.facebook / fVal : 0;
-            const gCtr = client.gCtrCount > 0 ? client.gCtrSum/client.gCtrCount : 0;
-            const fCtr = client.fCtrCount > 0 ? client.fCtrSum/client.fCtrCount : 0;
+            const gCtr = client.gCtrCount > 0 ? (client.gCtrSum/client.gCtrCount)*100 : 0;
+            const fCtr = client.fCtrCount > 0 ? (client.fCtrSum/client.fCtrCount)*100 : 0;
 
             return (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
@@ -499,7 +536,7 @@
                     <div className="grid grid-cols-3 gap-3">
                         <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
                         <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
-                        <KPICard label="CTR" value={`${client.ctr.toFixed(2)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(2)}%` : null} details={{ google: `${(gCtr*100).toFixed(2)}%`, facebook: `${(fCtr*100).toFixed(2)}%` }} />
+                        <KPICard label="CTR" value={`${client.ctr.toFixed(2)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(2)}%` : null} details={{ google: `${gCtr.toFixed(2)}%`, facebook: `${fCtr.toFixed(2)}%` }} />
                     </div>
                     
                     <TrendChart dailyData={client.dailyData} />
@@ -593,7 +630,7 @@
                                 if (tabsChecked.has(tabName)) return;
                                 tabsChecked.add(tabName);
                                 
-                                const range = (prefix + ' ' + suffix).includes('FB') ? `${prefix} ${suffix}!A:H` : `${prefix} ${suffix}!A:F`;
+                                const range = (prefix + ' ' + suffix).includes('FB') ? `${tabName}!A:H` : `${tabName}!A:F`;
                                 const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
                                 const json = await res.json();
                                 if (json.values) {
@@ -691,16 +728,17 @@
                                             target.care += d.CareApps; target.nurse += d.NurseApps;
                                         } else {
                                             day.cost += d.Cost;
-                                            // NEW: Use Clicks/Imps for Daily CTR Calculation
+                                            // Daily CTR using Clicks/Imps
                                             if (d.Clicks > 0 && d.Impressions > 0) {
                                                 day.ctrSum += d.Clicks;
-                                                day.ctrCount += d.Impressions; 
+                                                day.ctrCount += d.Impressions;
                                             }
                                             const c = d.CareApps + d.NurseApps + d.SupportApps;
                                             day.conv += c;
 
                                             const target = tabName.includes('Google') ? g : f;
                                             target.spend += d.Cost;
+                                            // Platform Totals
                                             if (d.Clicks > 0 && d.Impressions > 0) {
                                                 target.ctrSum += d.Clicks;
                                                 target.ctrCount += d.Impressions;
@@ -783,12 +821,6 @@
                             
                             // TOTAL AGGREGATE CTR = (Sum Clicks / Sum Imps) * 100
                             ctr: (g.ctrCount + f.ctrCount) > 0 ? ((g.ctrSum + f.ctrSum) / (g.ctrCount + f.ctrCount)) * 100 : 0,
-                            
-                            total: totalSpend,
-                            conversions: (g.care+f.care) + (g.nurse+f.nurse) + (g.support+f.support),
-                            careConversions: g.care + f.care,
-                            nursingConversions: g.nurse + f.nurse,
-                            supportConversions: g.support + f.support,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
