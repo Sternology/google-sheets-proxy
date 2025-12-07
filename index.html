@@ -25,6 +25,7 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
+        // --- HELPERS ---
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val);
 
@@ -44,68 +45,64 @@
             return isNaN(d.getTime()) ? null : d;
         };
 
-        // --- ROBUST ROW MAPPER ---
+        // --- SIMPLIFIED ROW MAPPER ---
         const mapRow = (headers, row) => {
             const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', Clicks: 0, Impressions: 0 };
             
-            // Normalize headers for searching
-            const hNorm = headers.map(h => (h || '').trim().toLowerCase());
-
-            // Helper to find index of best matching column
-            const findIdx = (keywords, exclude = []) => {
-                return hNorm.findIndex(h => {
-                    if (exclude.some(ex => h.includes(ex))) return false;
-                    return keywords.some(k => h === k || h.includes(k));
-                });
+            // Standardized Column Mappings
+            const map = {
+                date: ['date', 'day'],
+                campaign: ['campaign name', 'campaign'],
+                adset: ['adset name'],
+                cost: ['amount spent (gbp)', 'cost'],
+                budget: ['adset daily budget', 'budget amount'],
+                clicks: ['link clicks', 'clicks'], 
+                impressions: ['impressions', 'impr.'],
+                care: ['care', 'hca'], 
+                nurse: ['nurse', 'nursing'],
+                support: ['support worker']
             };
 
-            // 1. Identify Indexes
-            const idx = {
-                date: findIdx(['date', 'day']),
-                campaign: findIdx(['campaign name', 'campaign']),
-                adset: findIdx(['adset name']),
-                cost: findIdx(['amount spent (gbp)', 'cost']),
-                budget: findIdx(['adset daily budget', 'budget amount']),
-                
-                // Metrics
-                clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'unique']), // Avoid "Unique CTR"
-                impressions: findIdx(['impressions', 'impr.']),
-                
-                // Conversions (Search for specific keywords in conversion columns)
-                care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
-                nurse: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('nurse') || h.includes('nursing'))),
-                support: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('support'))),
-            };
+            // Find Indexes
+            const idx = {};
+            headers.forEach((h, i) => {
+                const lower = (h || '').trim().toLowerCase();
+                if (!lower) return;
 
-            // 2. Extract & Normalize Data
-            if (idx.date > -1) obj.Date = parseSheetDate(row[idx.date]);
-            if (idx.campaign > -1) obj.Campaign = row[idx.campaign];
-            if (idx.adset > -1) obj.Adset = row[idx.adset];
+                for (const [key, keywords] of Object.entries(map)) {
+                    if (['care', 'nurse', 'support'].includes(key)) continue; 
+                    if (idx[key] === undefined && keywords.some(k => lower === k || lower.includes(k))) {
+                        if (key === 'clicks' && lower.includes('ctr')) return; 
+                        idx[key] = i;
+                    }
+                }
+                if (lower.includes('conversion') || lower.includes('application')) {
+                    if (map.care.some(k => lower.includes(k))) idx.care = i;
+                    else if (map.nurse.some(k => lower.includes(k))) idx.nurse = i;
+                    else if (map.support.some(k => lower.includes(k))) idx.support = i;
+                }
+            });
+
+            // Extract Data
+            if (idx.date !== undefined) obj.Date = parseSheetDate(row[idx.date]);
+            if (idx.campaign !== undefined) obj.Campaign = row[idx.campaign];
+            if (idx.adset !== undefined) obj.Adset = row[idx.adset];
 
             const getNum = (i) => {
-                if (i === -1 || !row[i]) return 0;
+                if (i === undefined || !row[i]) return 0;
                 const n = parseFloat(String(row[i]).replace(/[%£$,]/g, ''));
                 return isNaN(n) ? 0 : n;
             };
 
-            // Spend (Pence Check)
             const rawCost = getNum(idx.cost);
-            // If header contains "amount spent", assume FB -> check for pence
-            const isFbSpend = idx.cost > -1 && hNorm[idx.cost].includes('amount spent');
-            if (isFbSpend && rawCost > 500) obj.Cost = rawCost / 100;
-            else obj.Cost = rawCost;
+            obj.Cost = rawCost > 500 ? rawCost / 100 : rawCost;
 
-            // Budget
             const rawBudget = getNum(idx.budget);
-            const isFbBudget = idx.budget > -1 && hNorm[idx.budget].includes('adset');
-            if (isFbBudget && rawBudget > 500) obj.DailyBudget = rawBudget / 100;
-            else obj.DailyBudget = rawBudget;
+            obj.DailyBudget = rawBudget > 500 ? rawBudget / 100 : rawBudget;
 
-            // Metrics
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.impressions);
 
-            // Conversions (Anti-Inflation)
             const getConv = (i) => {
                 const n = getNum(i);
                 return n < 50 ? n : 0; 
@@ -145,7 +142,7 @@
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-blue-400">{log.clicks || '-'}</td>
+                                        <td className="py-2 text-right text-blue-300">{log.clicks || '-'}</td>
                                         <td className="py-2 text-right text-purple-400">{log.imps || '-'}</td>
                                         <td className="py-2 text-right text-orange-400 font-bold">
                                             {(log.clicks > 0 && log.imps > 0) ? `${((log.clicks/log.imps)*100).toFixed(2)}%` : '-'}
@@ -177,12 +174,9 @@
                     <div>
                         <div className="text-red-400 font-bold text-sm uppercase tracking-wide mb-1">Data Freshness Warning</div>
                         <div className="text-red-100 text-sm">The following tabs have not updated with data for today:</div>
-                        <div className="mt-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                            {staleTabs.map(t => (
-                                <div key={t.name} className="bg-red-950/50 text-red-200 px-2 py-1.5 rounded text-xs border border-red-800/50 flex justify-between items-center">
-                                    <span className="font-bold mr-2">{t.name}</span>
-                                    <span className="opacity-60">{t.date || 'No Date'}</span>
-                                </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            {staleTabs.map(tab => (
+                                <span key={tab} className="bg-red-900 text-red-200 px-2 py-1 rounded text-xs border border-red-700">{tab}</span>
                             ))}
                         </div>
                     </div>
@@ -337,7 +331,6 @@
             return (
                 <div className="perspective-1000 h-32 cursor-pointer group" onClick={() => setFlipped(!flipped)}>
                     <div className={`relative w-full h-full transition-transform duration-500 transform-style-3d ${flipped ? 'rotate-y-180' : ''}`}>
-                        {/* FRONT */}
                         <div className={`absolute w-full h-full backface-hidden p-4 rounded-xl border ${theme} flex flex-col justify-between shadow-sm group-hover:shadow-md`}>
                             <div>
                                 <div className="flex items-center gap-2 opacity-90 mb-1">
@@ -346,7 +339,6 @@
                                 </div>
                                 <div className="text-2xl font-bold">{value}</div>
                             </div>
-                            
                             {trend !== undefined && !isNaN(trend) && isFinite(trend) && (
                                 <div className={`w-full py-1.5 px-2 rounded text-xs font-bold flex items-center justify-between ${trendColor}`}>
                                     <span className="flex items-center gap-1">{arrow} {Math.abs(trend).toFixed(0)}%</span>
@@ -355,8 +347,6 @@
                             )}
                             <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-40 transition-opacity text-[10px]">↻</div>
                         </div>
-
-                        {/* BACK */}
                         <div className="absolute w-full h-full backface-hidden rotate-y-180 p-4 rounded-xl border bg-white border-gray-200 flex flex-col justify-center shadow-sm">
                             <div className="text-xs font-bold uppercase text-gray-400 mb-2 text-center">{label} Split</div>
                             <div className="grid grid-cols-2 gap-2 text-center">
@@ -476,6 +466,83 @@
                                 {fRec > 0 && <div className="flex justify-between"><span>Meta</span><span className="font-mono">{formatMoney(fRec)}</span></div>}
                             </div>
                         </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- CLIENT CARD COMPONENT (NOW DEFINED!) ---
+        const ClientCard = ({ client }) => {
+            const [open, setOpen] = useState(false);
+            
+            let kpi = { lbl: 'Conversions', val: client.conversions, icon: '🎯', prev: client.prev.conversions };
+            if (client.name.includes('Nursing')) kpi = { lbl: 'Nurse Apps', val: client.nursingConversions, icon: '👩‍⚕️', prev: client.prev.nursingConversions };
+            else if (client.name.includes('Brandon')) kpi = { lbl: 'Support Apps', val: client.supportConversions + client.careConversions, icon: '📝', prev: client.prev.supportConversions + client.prev.careConversions };
+            else if (client.name.includes('Care') || client.name.includes('HC-One')) kpi = { lbl: 'Care Apps', val: client.careConversions, icon: '🏥', prev: client.prev.careConversions };
+
+            const calcTrend = (curr, prev) => prev > 0 ? ((curr - prev) / prev) * 100 : 0;
+            const convTrend = calcTrend(kpi.val, kpi.prev);
+            const cpa = kpi.val > 0 ? client.total / kpi.val : 0;
+            const prevCpa = kpi.prev > 0 ? client.prev.total / kpi.prev : 0;
+            const cpaTrend = calcTrend(cpa, prevCpa);
+            const ctrTrend = calcTrend(client.ctr, client.prev.ctr);
+
+            let gVal = 0, fVal = 0;
+            if(client.name.includes('Nursing')){ gVal=client.gNurse; fVal=client.fNurse; }
+            else if(client.name.includes('Brandon')){ gVal=client.gSupport; fVal=client.fSupport; }
+            else { gVal=client.gCare; fVal=client.fCare; }
+
+            const gCpa = gVal > 0 ? client.google / gVal : 0;
+            const fCpa = fVal > 0 ? client.facebook / fVal : 0;
+            
+            // Platform Specific CTRs
+            const gCtr = client.gCtrCount > 0 ? (client.gCtrSum/client.gCtrCount)*100 : 0;
+            const fCtr = client.fCtrCount > 0 ? (client.fCtrSum/client.fCtrCount)*100 : 0;
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                            <h3 className="font-bold text-lg text-gray-900">{client.name}</h3>
+                            <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">{client.periodLabel}</div>
+                        </div>
+                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                            client.status === 'HOT' ? 'bg-red-100 text-red-700' : 
+                            client.status === 'COLD' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                        }`}>{client.status}</span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mb-6">
+                        <Gauge pct={client.pctUsed} label="Budget" sub={`${client.pctUsed.toFixed(0)}%`} color={client.pctUsed > 100 ? '#ef4444' : '#10b981'} detail={`${formatMoney(client.total)} / ${formatMoney(client.budget)}`} />
+                        <div className="flex flex-col items-center justify-center p-2 bg-gray-50 rounded-xl border border-gray-100">
+                            <div className="text-xs font-bold text-gray-400 uppercase mb-2">Pace</div>
+                            <div className="text-3xl">{client.status === 'HOT' ? '🔥' : client.status === 'COLD' ? '🧊' : '✅'}</div>
+                        </div>
+                        <Gauge pct={(client.projected/client.budget)*100} label="Projected" sub={formatMoney(client.projected)} color="#3b82f6" />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                        <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal), facebook: Math.floor(fVal) }} />
+                        <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
+                        <KPICard label="CTR" value={`${client.ctr.toFixed(2)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={client.prev.ctr > 0 ? `${client.prev.ctr.toFixed(2)}%` : null} details={{ google: `${gCtr.toFixed(2)}%`, facebook: `${fCtr.toFixed(2)}%` }} />
+                    </div>
+                    
+                    <TrendChart dailyData={client.dailyData} />
+
+                    <BudgetAction client={client} />
+
+                    <div className="mt-auto pt-4 border-t border-gray-100">
+                        <button onClick={() => setOpen(!open)} className="w-full flex justify-between text-xs font-bold uppercase text-gray-400 hover:text-gray-600 tracking-wider">
+                            <span>Details</span><span>{open ? 'Hide' : 'Show'}</span>
+                        </button>
+                        {open && (
+                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl border border-gray-100 animate-fade-in">
+                                <div className="flex justify-between"><span>Spent</span><strong>{formatMoney(client.total)}</strong></div>
+                                <div className="flex justify-between"><span>Budget</span><strong>{formatMoney(client.budget)}</strong></div>
+                                <div className="flex justify-between"><span>Daily (Actual)</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
+                                <div className="flex justify-between"><span>Days Left</span><strong>{client.daysLeft}</strong></div>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
@@ -639,6 +706,8 @@
                                 }
 
                                 const inCurrent = d.Date >= dates.start && d.Date <= dates.end;
+
+                                // AUTO DETECT PLATFORM (Shift-Aware)
                                 const isFbRow = !!d.Adset;
 
                                 if (inCurrent) {
@@ -660,6 +729,7 @@
                                             target.care += d.CareApps; target.nurse += d.NurseApps;
                                         } else {
                                             day.cost += d.Cost;
+                                            // Daily CTR using Clicks/Imps
                                             if (d.Clicks > 0 && d.Impressions > 0) {
                                                 day.ctrSum += d.Clicks;
                                                 day.ctrCount += d.Impressions;
@@ -711,6 +781,7 @@
                             date: d.date,
                             conv: d.conv,
                             cpa: d.conv > 0 ? d.cost / d.conv : 0,
+                            // DAILY CTR = (Total Clicks / Total Imps) * 100
                             ctr: d.ctrCount > 0 ? (d.ctrSum / d.ctrCount) * 100 : 0
                         }));
 
@@ -734,6 +805,7 @@
 
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
+                        // PREV CTR = (Total Clicks / Total Imps) * 100
                         prev.ctr = prev.ctrCount > 0 ? (prev.ctrSum / prev.ctrCount) * 100 : 0;
 
                         return {
@@ -747,7 +819,10 @@
                             gNurse: g.nurse, fNurse: f.nurse,
                             gSupport: g.support, fSupport: f.support,
                             
+                            // TOTAL AGGREGATE CTR = (Sum Clicks / Sum Imps) * 100
                             ctr: (g.ctrCount + f.ctrCount) > 0 ? ((g.ctrSum + f.ctrSum) / (g.ctrCount + f.ctrCount)) * 100 : 0,
+                            gCtrSum: g.ctrSum, gCtrCount: g.ctrCount,
+                            fCtrSum: f.ctrSum, fCtrCount: f.ctrCount,
                             
                             isHistorical: month !== 'current' && month !== 'last30',
                             prev: prev,
