@@ -27,7 +27,9 @@
             stroke-dashoffset: 2000;
             animation: draw 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
-        @keyframes draw { to { stroke-dashoffset: 0; } }
+        @keyframes draw {
+            to { stroke-dashoffset: 0; }
+        }
     </style>
 </head>
 <body class="p-6">
@@ -85,26 +87,38 @@
             // 2. Extract Data
             if (idx.date > -1) obj.Date = parseSheetDate(row[idx.date]);
             if (idx.camp > -1) obj.Campaign = row[idx.camp];
-            if (idx.adset > -1) obj.Adset = row[idx.adset]; // Now correctly found!
 
+            // 3. SHIFT DETECTION (Fix for older/broken files)
+            // If "Adset daily budget" contains text, it's actually the Adset Name
+            let costVal = 0, budgetVal = 0;
+            
+            if (idx.budget > -1 && isNaN(parseFloat(String(row[idx.budget]).replace(/,/g, '')))) {
+                // Detected Text in Budget Column -> It's the Adset Name
+                obj.Adset = row[idx.budget]; 
+                // Shift Spend to the next column (Cost is usually next)
+                if (idx.cost > -1) costVal = parseFloat(String(row[idx.cost]).replace(/,/g, ''));
+                // Budget might be missing or further right
+            } else {
+                // Normal
+                if (idx.adset > -1) obj.Adset = row[idx.adset];
+                if (idx.cost > -1) costVal = parseFloat(String(row[idx.cost]).replace(/,/g, ''));
+                if (idx.budget > -1) budgetVal = parseFloat(String(row[idx.budget]).replace(/,/g, ''));
+            }
+
+            // 4. Normalize Spend (Pence vs Pounds)
+            if (costVal > 500 && headers[idx.cost]?.toLowerCase().includes('amount spent')) obj.Cost = costVal / 100;
+            else obj.Cost = costVal;
+
+            if (budgetVal > 500 && idx.budget > -1 && headers[idx.budget]?.toLowerCase().includes('adset')) obj.DailyBudget = budgetVal / 100;
+            else obj.DailyBudget = budgetVal;
+
+            // 5. Metrics
             const getNum = (i) => {
                 if (i === -1 || !row[i]) return 0;
                 const n = parseFloat(String(row[i]).replace(/[%£$,]/g, ''));
                 return isNaN(n) ? 0 : n;
             };
 
-            // Spend (Pence Check)
-            const rawCost = getNum(idx.cost);
-            const headerCost = idx.cost > -1 ? headers[idx.cost].toLowerCase() : '';
-            if (rawCost > 500 && headerCost.includes('amount spent')) obj.Cost = rawCost / 100;
-            else obj.Cost = rawCost;
-
-            // Budget
-            const rawBudget = getNum(idx.budget);
-            if (rawBudget > 500 && idx.budget > -1 && headers[idx.budget].toLowerCase().includes('adset')) obj.DailyBudget = rawBudget / 100;
-            else obj.DailyBudget = rawBudget;
-
-            // Metrics
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.imps);
 
@@ -137,12 +151,11 @@
                                 <tr className="text-slate-500">
                                     <th className="pb-2">Client</th>
                                     <th className="pb-2">Date</th>
-                                    <th className="pb-2">Campaign</th>
+                                    <th className="pb-2">Campaign/Adset</th>
                                     <th className="pb-2 text-right">Spend</th>
                                     <th className="pb-2 text-right text-blue-400">Clicks</th>
                                     <th className="pb-2 text-right text-purple-400">Imps</th>
-                                    <th className="pb-2 text-right text-orange-400">CTR (Calc)</th>
-                                    <th className="pb-2 pl-4">Apps</th>
+                                    <th className="pb-2 text-right font-bold text-white">Apps</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
@@ -152,12 +165,9 @@
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-blue-400">{log.clicks || '-'}</td>
+                                        <td className="py-2 text-right text-blue-300">{log.clicks || '-'}</td>
                                         <td className="py-2 text-right text-purple-400">{log.imps || '-'}</td>
-                                        <td className="py-2 text-right text-orange-400 font-bold">
-                                            {(log.clicks > 0 && log.imps > 0) ? `${((log.clicks/log.imps)*100).toFixed(2)}%` : '-'}
-                                        </td>
-                                        <td className="py-2 pl-4 text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                        <td className="py-2 text-right font-bold text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
                                     </tr>
                                 ))}
                             </tbody>
