@@ -64,12 +64,8 @@
                 adset: findIdx(['adset name']),
                 cost: findIdx(['amount spent (gbp)', 'cost']),
                 budget: findIdx(['adset daily budget', 'budget amount']),
-                
-                // Metrics - Priority List
                 clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'unique', 'rate']), 
                 impressions: findIdx(['impressions', 'impr.']),
-                
-                // Conversions
                 care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
                 nurse: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('nurse') || h.includes('nursing'))),
                 support: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('support'))),
@@ -85,23 +81,28 @@
                 return isNaN(n) ? 0 : n;
             };
 
-            // Spend (Pence Check)
             const rawCost = getNum(idx.cost);
             const isFbSpend = idx.cost > -1 && hNorm[idx.cost].includes('amount spent');
             if (isFbSpend && rawCost > 500) obj.Cost = rawCost / 100;
             else obj.Cost = rawCost;
 
-            // Budget
+            // Budget Fix: Aggressive Pence Detection for FB
             const rawBudget = getNum(idx.budget);
             const isFbBudget = idx.budget > -1 && hNorm[idx.budget].includes('adset');
-            if (isFbBudget && rawBudget > 500) obj.DailyBudget = rawBudget / 100;
-            else obj.DailyBudget = rawBudget;
+            
+            if (isFbBudget) {
+                // If it's a FB Budget column and > 50, assume Pence (e.g. 100 = £1.00)
+                if (rawBudget > 50) obj.DailyBudget = rawBudget / 100;
+                else obj.DailyBudget = rawBudget;
+            } else {
+                // Google usually safe
+                if (rawBudget > 500) obj.DailyBudget = rawBudget / 100;
+                else obj.DailyBudget = rawBudget;
+            }
 
-            // Metrics
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.impressions);
 
-            // Conversions (Anti-Inflation)
             const getConv = (i) => {
                 const n = getNum(i);
                 return n < 50 ? n : 0; 
@@ -165,7 +166,6 @@
                                 </div>
                                 <div className="text-2xl font-bold">{value}</div>
                             </div>
-                            
                             {trend !== undefined && !isNaN(trend) && isFinite(trend) && (
                                 <div className={`w-full py-1.5 px-2 rounded text-xs font-bold flex items-center justify-between ${trendColor}`}>
                                     <span className="flex items-center gap-1">{arrow} {Math.abs(trend).toFixed(0)}%</span>
@@ -449,91 +449,7 @@
             );
         };
 
-        // 8. ClientCard
-        const ClientCard = ({ client }) => {
-            const [open, setOpen] = useState(false);
-            
-            let kpi = { lbl: 'Conversions', val: client.conversions || 0, icon: '🎯', prev: client.prev.conversions || 0 };
-            if (client.name.includes('Nursing')) kpi = { lbl: 'Nurse Apps', val: client.nursingConversions || 0, icon: '👩‍⚕️', prev: client.prev.nursingConversions || 0 };
-            else if (client.name.includes('Brandon')) kpi = { lbl: 'Support Apps', val: (client.supportConversions || 0) + (client.careConversions || 0), icon: '📝', prev: (client.prev.supportConversions || 0) + (client.prev.careConversions || 0) };
-            else if (client.name.includes('Care') || client.name.includes('HC-One') || client.name.includes('Apollo')) kpi = { lbl: 'Care Apps', val: client.careConversions || 0, icon: '🏥', prev: client.prev.careConversions || 0 };
-
-            const calcTrend = (curr, prev) => prev > 0 ? ((curr - prev) / prev) * 100 : 0;
-            const convTrend = calcTrend(kpi.val, kpi.prev);
-            const cpa = kpi.val > 0 ? client.total / kpi.val : 0;
-            const prevCpa = kpi.prev > 0 ? client.prev.total / kpi.prev : 0;
-            const cpaTrend = calcTrend(cpa, prevCpa);
-            
-            // Total CTR
-            const totalImps = (client.gImps || 0) + (client.fImps || 0);
-            const totalClicks = (client.gClicks || 0) + (client.fClicks || 0);
-            const ctr = totalImps > 0 ? (totalClicks / totalImps) * 100 : 0;
-            
-            const prevImps = (client.prev.gImps || 0) + (client.prev.fImps || 0);
-            const prevClicks = (client.prev.gClicks || 0) + (client.prev.fClicks || 0);
-            const prevCtr = prevImps > 0 ? (prevClicks / prevImps) * 100 : 0;
-            const ctrTrend = calcTrend(ctr, prevCtr);
-
-            // Platform Specifics
-            const gVal = client.name.includes('Nursing') ? client.gNurse : client.gCare + client.gSupport;
-            const fVal = client.name.includes('Nursing') ? client.fNurse : client.fCare + client.fSupport;
-
-            const gCpa = gVal > 0 ? client.google / gVal : 0;
-            const fCpa = fVal > 0 ? client.facebook / fVal : 0;
-            
-            const gCtr = client.gImps > 0 ? (client.gClicks / client.gImps) * 100 : 0;
-            const fCtr = client.fImps > 0 ? (client.fClicks / client.fImps) * 100 : 0;
-
-            return (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
-                    <div className="flex justify-between items-start mb-6">
-                        <div>
-                            <h3 className="font-bold text-lg text-gray-900">{client.name}</h3>
-                            <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">{client.periodLabel}</div>
-                        </div>
-                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
-                            client.status === 'HOT' ? 'bg-red-100 text-red-700' : 
-                            client.status === 'COLD' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
-                        }`}>{client.status}</span>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 mb-6">
-                        <Gauge pct={client.pctUsed} label="Budget" sub={`${client.pctUsed.toFixed(0)}%`} color={client.pctUsed > 100 ? '#ef4444' : '#10b981'} detail={`${formatMoney(client.total)} / ${formatMoney(client.budget)}`} />
-                        <div className="flex flex-col items-center justify-center p-2 bg-gray-50 rounded-xl border border-gray-100">
-                            <div className="text-xs font-bold text-gray-400 uppercase mb-2">Pace</div>
-                            <div className="text-3xl">{client.status === 'HOT' ? '🔥' : client.status === 'COLD' ? '🧊' : '✅'}</div>
-                        </div>
-                        <Gauge pct={(client.projected/client.budget)*100} label="Projected" sub={formatMoney(client.projected)} color="#3b82f6" />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3">
-                        <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal || 0), facebook: Math.floor(fVal || 0) }} />
-                        <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
-                        <KPICard label="CTR" value={`${ctr.toFixed(2)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={prevCtr > 0 ? `${prevCtr.toFixed(2)}%` : null} details={{ google: `${gCtr.toFixed(2)}%`, facebook: `${fCtr.toFixed(2)}%` }} />
-                    </div>
-                    
-                    <TrendChart dailyData={client.dailyData} />
-
-                    <BudgetAction client={client} />
-
-                    <div className="mt-auto pt-4 border-t border-gray-100">
-                        <button onClick={() => setOpen(!open)} className="w-full flex justify-between text-xs font-bold uppercase text-gray-400 hover:text-gray-600 tracking-wider">
-                            <span>Details</span><span>{open ? 'Hide' : 'Show'}</span>
-                        </button>
-                        {open && (
-                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl border border-gray-100 animate-fade-in">
-                                <div className="flex justify-between"><span>Spent</span><strong>{formatMoney(client.total)}</strong></div>
-                                <div className="flex justify-between"><span>Budget</span><strong>{formatMoney(client.budget)}</strong></div>
-                                <div className="flex justify-between"><span>Daily (Actual)</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
-                                <div className="flex justify-between"><span>Days Left</span><strong>{client.daysLeft}</strong></div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
-        };
-
-        // 9. Dashboard
+        // 8. Dashboard
         const Dashboard = () => {
             const [data, setData] = useState([]);
             const [loading, setLoading] = useState(false);
@@ -611,19 +527,15 @@
                                 if (json.values) {
                                     cache[tabName] = json.values;
                                     
-                                    // REFINED FRESHNESS CHECK: Look at entire column for max date
+                                    // FRESHNESS CHECK (Full Scan for unsorted files)
                                     let latest = 0;
-                                    // Scan rows from bottom up to find latest date (skip header)
-                                    for(let i=json.values.length-1; i>0; i--) {
+                                    for(let i=1; i<json.values.length; i++) {
                                         const d = parseSheetDate(json.values[i][0]);
                                         if (d && d.getTime() > latest) latest = d.getTime();
-                                        // Optimization: If we found a date and moved 50 rows up, assumes unsorted but clustered
-                                        // For safety with completely random sort, we just scan all. It's fast enough for <10k rows.
                                     }
                                     
                                     if (latest > 0) {
                                         const now = new Date();
-                                        // 1.5 days tolerance
                                         if ((now.getTime() - latest) / (1000 * 60 * 60 * 24) > 1.5) {
                                             stale.push({ name: tabName, date: new Date(latest).toLocaleDateString() });
                                         }
