@@ -25,6 +25,7 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
+        // --- HELPERS ---
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val || 0);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val || 0);
 
@@ -44,16 +45,17 @@
             return isNaN(d.getTime()) ? null : d;
         };
 
-        // --- SIMPLIFIED ROW MAPPER ---
+        // --- ROW MAPPER ---
         const mapRow = (headers, row) => {
             const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', Clicks: 0, Impressions: 0 };
             
-            // Normalize headers
             const hNorm = headers.map(h => (h || '').trim().toLowerCase());
 
-            // Helper to find index of best matching column
-            const findIdx = (keywords) => {
-                return hNorm.findIndex(h => keywords.some(k => h === k || h.includes(k)));
+            const findIdx = (keywords, exclude = []) => {
+                return hNorm.findIndex(h => {
+                    if (exclude.some(ex => h.includes(ex))) return false;
+                    return keywords.some(k => h === k || h.includes(k));
+                });
             };
 
             const idx = {
@@ -62,18 +64,13 @@
                 adset: findIdx(['adset name']),
                 cost: findIdx(['amount spent (gbp)', 'cost']),
                 budget: findIdx(['adset daily budget', 'budget amount']),
-                
-                // Metrics (No CTR column needed anymore!)
-                clicks: findIdx(['link clicks', 'clicks']), 
+                clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'unique', 'rate']), 
                 impressions: findIdx(['impressions', 'impr.']),
-                
-                // Conversions
                 care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
                 nurse: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('nurse') || h.includes('nursing'))),
                 support: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('support'))),
             };
 
-            // Extract Data
             if (idx.date > -1) obj.Date = parseSheetDate(row[idx.date]);
             if (idx.campaign > -1) obj.Campaign = row[idx.campaign];
             if (idx.adset > -1) obj.Adset = row[idx.adset];
@@ -84,23 +81,19 @@
                 return isNaN(n) ? 0 : n;
             };
 
-            // Spend (Pence Check)
             const rawCost = getNum(idx.cost);
             const isFbSpend = idx.cost > -1 && hNorm[idx.cost].includes('amount spent');
             if (isFbSpend && rawCost > 500) obj.Cost = rawCost / 100;
             else obj.Cost = rawCost;
 
-            // Budget
             const rawBudget = getNum(idx.budget);
             const isFbBudget = idx.budget > -1 && hNorm[idx.budget].includes('adset');
             if (isFbBudget && rawBudget > 500) obj.DailyBudget = rawBudget / 100;
             else obj.DailyBudget = rawBudget;
 
-            // Metrics
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.impressions);
 
-            // Conversions (Anti-Inflation)
             const getConv = (i) => {
                 const n = getNum(i);
                 return n < 50 ? n : 0; 
@@ -292,6 +285,7 @@
             );
         };
 
+        // 4. BudgetAction
         const BudgetAction = ({ client }) => {
             const [open, setOpen] = useState(false);
 
@@ -375,6 +369,78 @@
             );
         };
 
+        // 5. MonthSelector
+        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
+            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
+                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
+                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+            </div>
+        );
+
+        // 6. StaleDataAlert
+        const StaleDataAlert = ({ staleTabs }) => {
+            if (!staleTabs || staleTabs.length === 0) return null;
+            return (
+                <div className="mb-6 bg-red-900/30 border border-red-500/50 rounded-xl p-4 flex items-start gap-3 animate-pulse text-white">
+                    <span className="text-2xl">⚠️</span>
+                    <div>
+                        <div className="text-red-400 font-bold text-sm uppercase tracking-wide mb-1">Data Freshness Warning</div>
+                        <div className="text-red-100 text-sm">The following tabs have not updated with data for today:</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            {staleTabs.map(tab => (
+                                <span key={tab.name} className="bg-red-900 text-red-200 px-2 py-1 rounded text-xs border border-red-700">{tab.name} ({tab.date})</span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 7. DebugPanel
+        const DebugPanel = ({ logs }) => {
+            if (!logs || logs.length === 0) return null;
+            return (
+                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="text-slate-500">
+                                    <th className="pb-2">Client</th>
+                                    <th className="pb-2">Date</th>
+                                    <th className="pb-2">Source</th>
+                                    <th className="pb-2 text-right">Spend</th>
+                                    <th className="pb-2 text-right text-blue-400">Clicks</th>
+                                    <th className="pb-2 text-right text-purple-400">Imps</th>
+                                    <th className="pb-2 text-right text-orange-400">CTR (Calc)</th>
+                                    <th className="pb-2 pl-4">Apps</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                                {logs.map((log, i) => (
+                                    <tr key={i} className="hover:bg-slate-700">
+                                        <td className="py-2 text-blue-400">{log.client}</td>
+                                        <td className="py-2">{log.date}</td>
+                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
+                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
+                                        <td className="py-2 text-right text-blue-300">{log.clicks || '-'}</td>
+                                        <td className="py-2 text-right text-purple-400">{log.imps || '-'}</td>
+                                        <td className="py-2 text-right text-orange-400 font-bold">
+                                            {(log.clicks > 0 && log.imps > 0) ? `${((log.clicks/log.imps)*100).toFixed(2)}%` : '-'}
+                                        </td>
+                                        <td className="py-2 pl-4 text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        // 8. ClientCard
         const ClientCard = ({ client }) => {
             const [open, setOpen] = useState(false);
             
@@ -458,6 +524,7 @@
             );
         };
 
+        // 9. Dashboard
         const Dashboard = () => {
             const [data, setData] = useState([]);
             const [loading, setLoading] = useState(false);
@@ -535,7 +602,7 @@
                                 if (json.values) {
                                     cache[tabName] = json.values;
                                     
-                                    // FRESHNESS CHECK
+                                    // FRESHNESS CHECK (Last 5 rows)
                                     let latest = 0;
                                     for(let i=1; i<=5; i++) {
                                         if (json.values.length - i >= 0) {
@@ -746,6 +813,9 @@
                             gNurse: g.nurse, fNurse: f.nurse,
                             gSupport: g.support, fSupport: f.support,
                             
+                            gImps: g.imps, gClicks: g.clicks,
+                            fImps: f.imps, fClicks: f.clicks,
+
                             // TOTAL AGGREGATE CTR = (Sum Clicks / Sum Imps) * 100
                             ctr: (g.imps + f.imps) > 0 ? ((g.clicks + f.clicks) / (g.imps + f.imps)) * 100 : 0,
                             
