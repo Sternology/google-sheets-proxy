@@ -25,7 +25,6 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
-        // --- HELPERS ---
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val || 0);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val || 0);
 
@@ -45,7 +44,6 @@
             return isNaN(d.getTime()) ? null : d;
         };
 
-        // --- ROBUST ROW MAPPER ---
         const mapRow = (headers, row) => {
             const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', Clicks: 0, Impressions: 0 };
             
@@ -54,7 +52,9 @@
             const findIdx = (keywords, exclude = []) => {
                 return hNorm.findIndex(h => {
                     if (exclude.some(ex => h.includes(ex))) return false;
-                    return keywords.some(k => h === k || h.includes(k));
+                    // Exact match check first, then contains
+                    if (keywords.some(k => h === k)) return true; 
+                    return keywords.some(k => h.includes(k));
                 });
             };
 
@@ -64,8 +64,15 @@
                 adset: findIdx(['adset name']),
                 cost: findIdx(['amount spent (gbp)', 'cost']),
                 budget: findIdx(['adset daily budget', 'budget amount']),
-                clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'unique']), 
+                
+                // Metrics - STRICT ORDER
+                // 1. "link clicks" (FB specific)
+                // 2. "clicks" (Google specific - EXACT match preferred to avoid "click-through rate")
+                clicks: hNorm.findIndex(h => h === 'link clicks' || h === 'clicks' || (h.includes('clicks') && !h.includes('ctr') && !h.includes('unique'))),
+                
                 impressions: findIdx(['impressions', 'impr.']),
+                
+                // Conversions
                 care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
                 nurse: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('nurse') || h.includes('nursing'))),
                 support: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('support'))),
@@ -81,19 +88,23 @@
                 return isNaN(n) ? 0 : n;
             };
 
+            // Spend
             const rawCost = getNum(idx.cost);
             const isFbSpend = idx.cost > -1 && hNorm[idx.cost].includes('amount spent');
             if (isFbSpend && rawCost > 500) obj.Cost = rawCost / 100;
             else obj.Cost = rawCost;
 
+            // Budget
             const rawBudget = getNum(idx.budget);
             const isFbBudget = idx.budget > -1 && hNorm[idx.budget].includes('adset');
             if (isFbBudget && rawBudget > 500) obj.DailyBudget = rawBudget / 100;
             else obj.DailyBudget = rawBudget;
 
+            // Metrics
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.impressions);
 
+            // Conversions
             const getConv = (i) => {
                 const n = getNum(i);
                 return n < 50 ? n : 0; 
@@ -157,6 +168,7 @@
                                 </div>
                                 <div className="text-2xl font-bold">{value}</div>
                             </div>
+                            
                             {trend !== undefined && !isNaN(trend) && isFinite(trend) && (
                                 <div className={`w-full py-1.5 px-2 rounded text-xs font-bold flex items-center justify-between ${trendColor}`}>
                                     <span className="flex items-center gap-1">{arrow} {Math.abs(trend).toFixed(0)}%</span>
@@ -285,7 +297,6 @@
             );
         };
 
-        // 4. BudgetAction
         const BudgetAction = ({ client }) => {
             const [open, setOpen] = useState(false);
 
@@ -440,7 +451,7 @@
             );
         };
 
-        // 8. ClientCard
+        // 8. ClientCard (Dependent on above)
         const ClientCard = ({ client }) => {
             const [open, setOpen] = useState(false);
             
@@ -524,7 +535,7 @@
             );
         };
 
-        // 9. Dashboard
+        // 9. Dashboard (Main Logic)
         const Dashboard = () => {
             const [data, setData] = useState([]);
             const [loading, setLoading] = useState(false);
@@ -718,7 +729,6 @@
                                             target.care += (d.CareApps || 0); target.nurse += (d.NurseApps || 0);
                                         } else {
                                             day.cost += (d.Cost || 0);
-                                            // Daily CTR using Clicks/Imps
                                             if (d.Clicks > 0 && d.Impressions > 0) {
                                                 day.ctrSum += d.Clicks;
                                                 day.ctrCount += d.Impressions;
