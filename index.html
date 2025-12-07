@@ -25,6 +25,7 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
+        // --- HELPERS ---
         const formatMoney = (val) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val || 0);
         const formatNumber = (val) => new Intl.NumberFormat('en-GB').format(val || 0);
 
@@ -44,37 +45,35 @@
             return isNaN(d.getTime()) ? null : d;
         };
 
-        // --- REGEX ROW MAPPER ---
+        // --- ROBUST ROW MAPPER ---
         const mapRow = (headers, row) => {
             const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', Clicks: 0, Impressions: 0 };
             
-            const hClean = headers.map(h => (h || '').toLowerCase().replace(/[^a-z0-9]/g, ''));
+            const hNorm = headers.map(h => (h || '').trim().toLowerCase());
 
-            const find = (regex, excludeRegex = null) => {
-                return hClean.findIndex(h => {
-                    if (excludeRegex && excludeRegex.test(h)) return false;
-                    return regex.test(h);
+            const findIdx = (keywords, exclude = []) => {
+                return hNorm.findIndex(h => {
+                    if (exclude.some(ex => h.includes(ex))) return false;
+                    return keywords.some(k => h === k || h.includes(k));
                 });
             };
 
             const idx = {
-                date: find(/date|day/),
-                campaign: find(/campaign/),
-                adset: find(/adset/),
-                cost: find(/amountspent|cost/),
-                budget: find(/budget/),
+                date: findIdx(['date', 'day']),
+                campaign: findIdx(['campaign name', 'campaign']),
+                adset: findIdx(['adset name']),
+                cost: findIdx(['amount spent (gbp)', 'cost']),
+                budget: findIdx(['adset daily budget', 'budget amount']),
                 
-                // Metrics: Strict Regex
-                clicks: find(/^(link)?clicks$/, /ctr|rate|unique/),
-                impressions: find(/impression|impr/),
+                // Metrics - Strict Priority
+                clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'rate', 'unique']), 
+                impressions: findIdx(['impressions', 'impr.']),
                 
                 // Conversions
-                care: find(/conversion|application/, /nurse|nursing|support/), 
-                nurse: find(/(conversion|application).*(nurse|nursing)/),
-                support: find(/(conversion|application).*support/),
+                care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
+                nurse: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('nurse') || h.includes('nursing'))),
+                support: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('support'))),
             };
-            
-            if(idx.care === -1) idx.care = find(/(conversion|application).*care/);
 
             if (idx.date > -1) obj.Date = parseSheetDate(row[idx.date]);
             if (idx.campaign > -1) obj.Campaign = row[idx.campaign];
@@ -86,22 +85,24 @@
                 return isNaN(n) ? 0 : n;
             };
 
-            // Spend
+            // Spend (Pence Check)
             const rawCost = getNum(idx.cost);
-            const isFbSpend = idx.cost > -1 && hClean[idx.cost].includes('amountspent');
+            const isFbSpend = idx.cost > -1 && hNorm[idx.cost].includes('amount spent');
             if (isFbSpend && rawCost > 500) obj.Cost = rawCost / 100;
             else obj.Cost = rawCost;
 
             // Budget
             const rawBudget = getNum(idx.budget);
-            const isFbBudget = idx.budget > -1 && hClean[idx.budget].includes('adset');
+            const isFbBudget = idx.budget > -1 && hNorm[idx.budget].includes('adset');
+            // FB Budgets often come as pence even if <500 sometimes, but usually >50 implies pence for daily budget context
             if (isFbBudget && rawBudget > 50) obj.DailyBudget = rawBudget / 100;
             else obj.DailyBudget = rawBudget;
 
+            // Metrics
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.impressions);
 
-            // Conversions
+            // Conversions (Anti-Inflation)
             const getConv = (i) => {
                 const n = getNum(i);
                 return n < 50 ? n : 0; 
@@ -113,7 +114,7 @@
             return obj;
         };
 
-        // --- COMPONENTS ---
+        // --- SUB-COMPONENTS ---
 
         const Gauge = ({ pct, label, sub, color, detail }) => {
             const r = 40, c = 2 * Math.PI * r;
@@ -293,7 +294,6 @@
             );
         };
 
-        // 4. BudgetAction
         const BudgetAction = ({ client }) => {
             const [open, setOpen] = useState(false);
 
@@ -377,72 +377,85 @@
             );
         };
 
-        // 5. MonthSelector
-        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
-            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
-                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
-                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                </select>
-            </div>
-        );
+        // --- CLIENT CARD (Defined BEFORE Dashboard) ---
+        const ClientCard = ({ client }) => {
+            const [open, setOpen] = useState(false);
+            
+            let kpi = { lbl: 'Conversions', val: client.conversions || 0, icon: '🎯', prev: client.prev.conversions || 0 };
+            if (client.name.includes('Nursing')) kpi = { lbl: 'Nurse Apps', val: client.nursingConversions || 0, icon: '👩‍⚕️', prev: client.prev.nursingConversions || 0 };
+            else if (client.name.includes('Brandon')) kpi = { lbl: 'Support Apps', val: (client.supportConversions || 0) + (client.careConversions || 0), icon: '📝', prev: (client.prev.supportConversions || 0) + (client.prev.careConversions || 0) };
+            else if (client.name.includes('Care') || client.name.includes('HC-One') || client.name.includes('Apollo')) kpi = { lbl: 'Care Apps', val: client.careConversions || 0, icon: '🏥', prev: client.prev.careConversions || 0 };
 
-        // 6. StaleDataAlert
-        const StaleDataAlert = ({ staleTabs }) => {
-            if (!staleTabs || staleTabs.length === 0) return null;
+            const calcTrend = (curr, prev) => prev > 0 ? ((curr - prev) / prev) * 100 : 0;
+            const convTrend = calcTrend(kpi.val, kpi.prev);
+            const cpa = kpi.val > 0 ? client.total / kpi.val : 0;
+            const prevCpa = kpi.prev > 0 ? client.prev.total / kpi.prev : 0;
+            const cpaTrend = calcTrend(cpa, prevCpa);
+            
+            // Total CTR
+            const totalImps = (client.gImps || 0) + (client.fImps || 0);
+            const totalClicks = (client.gClicks || 0) + (client.fClicks || 0);
+            const ctr = totalImps > 0 ? (totalClicks / totalImps) * 100 : 0;
+            
+            const prevImps = (client.prev.gImps || 0) + (client.prev.fImps || 0);
+            const prevClicks = (client.prev.gClicks || 0) + (client.prev.fClicks || 0);
+            const prevCtr = prevImps > 0 ? (prevClicks / prevImps) * 100 : 0;
+            const ctrTrend = calcTrend(ctr, prevCtr);
+
+            // Platform Specifics
+            const gVal = client.name.includes('Nursing') ? client.gNurse : client.gCare + client.gSupport;
+            const fVal = client.name.includes('Nursing') ? client.fNurse : client.fCare + client.fSupport;
+
+            const gCpa = gVal > 0 ? client.google / gVal : 0;
+            const fCpa = fVal > 0 ? client.facebook / fVal : 0;
+            
+            const gCtr = client.gImps > 0 ? (client.gClicks / client.gImps) * 100 : 0;
+            const fCtr = client.fImps > 0 ? (client.fClicks / client.fImps) * 100 : 0;
+
             return (
-                <div className="mb-6 bg-red-900/30 border border-red-500/50 rounded-xl p-4 flex items-start gap-3 animate-pulse text-white">
-                    <span className="text-2xl">⚠️</span>
-                    <div>
-                        <div className="text-red-400 font-bold text-sm uppercase tracking-wide mb-1">Data Freshness Warning</div>
-                        <div className="text-red-100 text-sm">The following tabs have not updated with data for today:</div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                            {staleTabs.map(tab => (
-                                <span key={tab.name} className="bg-red-900 text-red-200 px-2 py-1 rounded text-xs border border-red-700">{tab.name} ({tab.date})</span>
-                            ))}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                            <h3 className="font-bold text-lg text-gray-900">{client.name}</h3>
+                            <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-1">{client.periodLabel}</div>
                         </div>
+                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                            client.status === 'HOT' ? 'bg-red-100 text-red-700' : 
+                            client.status === 'COLD' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                        }`}>{client.status}</span>
                     </div>
-                </div>
-            );
-        };
 
-        // 7. DebugPanel
-        const DebugPanel = ({ logs }) => {
-            if (!logs || logs.length === 0) return null;
-            return (
-                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
-                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="text-slate-500">
-                                    <th className="pb-2">Client</th>
-                                    <th className="pb-2">Date</th>
-                                    <th className="pb-2">Source</th>
-                                    <th className="pb-2 text-right">Spend</th>
-                                    <th className="pb-2 text-right text-blue-400">Clicks</th>
-                                    <th className="pb-2 text-right text-purple-400">Imps</th>
-                                    <th className="pb-2 text-right text-orange-400">CTR (Calc)</th>
-                                    <th className="pb-2 pl-4">Apps</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-800">
-                                {logs.map((log, i) => (
-                                    <tr key={i} className="hover:bg-slate-700">
-                                        <td className="py-2 text-blue-400">{log.client}</td>
-                                        <td className="py-2">{log.date}</td>
-                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
-                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-blue-300">{log.clicks || '-'}</td>
-                                        <td className="py-2 text-right text-purple-400">{log.imps || '-'}</td>
-                                        <td className="py-2 text-right text-orange-400 font-bold">
-                                            {(log.clicks > 0 && log.imps > 0) ? `${((log.clicks/log.imps)*100).toFixed(2)}%` : '-'}
-                                        </td>
-                                        <td className="py-2 pl-4 text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="grid grid-cols-3 gap-2 mb-6">
+                        <Gauge pct={client.pctUsed} label="Budget" sub={`${client.pctUsed.toFixed(0)}%`} color={client.pctUsed > 100 ? '#ef4444' : '#10b981'} detail={`${formatMoney(client.total)} / ${formatMoney(client.budget)}`} />
+                        <div className="flex flex-col items-center justify-center p-2 bg-gray-50 rounded-xl border border-gray-100">
+                            <div className="text-xs font-bold text-gray-400 uppercase mb-2">Pace</div>
+                            <div className="text-3xl">{client.status === 'HOT' ? '🔥' : client.status === 'COLD' ? '🧊' : '✅'}</div>
+                        </div>
+                        <Gauge pct={(client.projected/client.budget)*100} label="Projected" sub={formatMoney(client.projected)} color="#3b82f6" />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                        <KPICard label={kpi.lbl} value={formatNumber(Math.floor(kpi.val))} icon={kpi.icon} color="green" trend={convTrend} prevValue={Math.floor(kpi.prev)} details={{ google: Math.floor(gVal || 0), facebook: Math.floor(fVal || 0) }} />
+                        <KPICard label="CPA" value={cpa ? `£${cpa.toFixed(2)}` : '-'} icon="💰" color="blue" trend={cpaTrend} prevValue={prevCpa ? `£${prevCpa.toFixed(2)}` : null} details={{ google: gCpa ? `£${gCpa.toFixed(2)}` : '-', facebook: fCpa ? `£${fCpa.toFixed(2)}` : '-' }} />
+                        <KPICard label="CTR" value={`${ctr.toFixed(2)}%`} icon="👆" color="orange" trend={ctrTrend} prevValue={prevCtr > 0 ? `${prevCtr.toFixed(2)}%` : null} details={{ google: `${gCtr.toFixed(2)}%`, facebook: `${fCtr.toFixed(2)}%` }} />
+                    </div>
+                    
+                    <TrendChart dailyData={client.dailyData} />
+
+                    <BudgetAction client={client} />
+
+                    <div className="mt-auto pt-4 border-t border-gray-100">
+                        <button onClick={() => setOpen(!open)} className="w-full flex justify-between text-xs font-bold uppercase text-gray-400 hover:text-gray-600 tracking-wider">
+                            <span>Details</span><span>{open ? 'Hide' : 'Show'}</span>
+                        </button>
+                        {open && (
+                            <div className="mt-3 space-y-2 text-sm text-gray-600 bg-gray-50 p-4 rounded-xl border border-gray-100 animate-fade-in">
+                                <div className="flex justify-between"><span>Spent</span><strong>{formatMoney(client.total)}</strong></div>
+                                <div className="flex justify-between"><span>Budget</span><strong>{formatMoney(client.budget)}</strong></div>
+                                <div className="flex justify-between"><span>Daily (Actual)</span><strong>{formatMoney(client.currentDailyBudget)}</strong></div>
+                                <div className="flex justify-between"><span>Days Left</span><strong>{client.daysLeft}</strong></div>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
@@ -529,6 +542,8 @@
                                     
                                     // REFINED FRESHNESS CHECK: Look at entire column for max date (Handle Unsorted)
                                     let latest = 0;
+                                    // Scan rows from bottom up to find latest date (skip header)
+                                    // Optimization: Scan last 100 rows, usually sufficient
                                     const limit = Math.max(1, json.values.length - 100);
                                     for(let i=json.values.length-1; i>0; i--) {
                                         const d = parseSheetDate(json.values[i][0]);
