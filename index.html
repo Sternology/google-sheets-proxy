@@ -52,7 +52,12 @@
 
         // --- 2. ROW MAPPER ---
         function mapRow(headers, row) {
-            const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', Clicks: 0, Impressions: 0 };
+            const obj = { 
+                Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, 
+                Adset: '', Campaign: '', Clicks: 0, Impressions: 0, 
+                // Debug fields
+                clickCol: null, impCol: null 
+            };
             
             const hNorm = headers.map(h => (h || '').trim().toLowerCase());
 
@@ -69,7 +74,7 @@
                 adset: findIdx(['adset name']),
                 cost: findIdx(['amount spent (gbp)', 'cost']),
                 budget: findIdx(['adset daily budget', 'budget amount']),
-                // Priority: "Link clicks" (FB), then "Clicks" (Google). Ignore CTR columns.
+                // Metrics - Priority
                 clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'rate', 'unique']), 
                 impressions: findIdx(['impressions', 'impr.']),
                 care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
@@ -99,6 +104,10 @@
 
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.impressions);
+
+            // Capture Debug Info
+            if (idx.clicks > -1) obj.clickCol = headers[idx.clicks];
+            if (idx.impressions > -1) obj.impCol = headers[idx.impressions];
 
             const getConv = (i) => {
                 const n = getNum(i);
@@ -289,7 +298,7 @@
                     </div>
                 </div>
             );
-        }
+        };
 
         function BudgetAction({ client }) {
             const [open, setOpen] = useState(false);
@@ -374,6 +383,7 @@
             );
         }
 
+        // 5. MonthSelector
         function MonthSelector({ selectedMonth, onMonthChange, availableMonths }) {
             return (
                 <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
@@ -385,6 +395,7 @@
             );
         }
 
+        // 6. StaleDataAlert
         function StaleDataAlert({ staleTabs }) {
             if (!staleTabs || staleTabs.length === 0) return null;
             return (
@@ -403,6 +414,7 @@
             );
         }
 
+        // 7. DebugPanel
         function DebugPanel({ logs }) {
             if (!logs || logs.length === 0) return null;
             return (
@@ -415,10 +427,10 @@
                                     <th className="pb-2">Client</th>
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Source</th>
+                                    <th className="pb-2">Cols Found</th>
                                     <th className="pb-2 text-right">Spend</th>
                                     <th className="pb-2 text-right text-blue-400">Clicks</th>
                                     <th className="pb-2 text-right text-purple-400">Imps</th>
-                                    <th className="pb-2 text-right text-orange-400">CTR (Calc)</th>
                                     <th className="pb-2 pl-4">Apps</th>
                                 </tr>
                             </thead>
@@ -428,12 +440,10 @@
                                         <td className="py-2 text-blue-400">{log.client}</td>
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
+                                        <td className="py-2 text-[10px] text-gray-500">{log.debugCols}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
-                                        <td className="py-2 text-right text-blue-300">{log.clicks || '-'}</td>
-                                        <td className="py-2 text-right text-purple-400">{log.imps || '-'}</td>
-                                        <td className="py-2 text-right text-orange-400 font-bold">
-                                            {(log.clicks > 0 && log.imps > 0) ? `${((log.clicks/log.imps)*100).toFixed(2)}%` : '-'}
-                                        </td>
+                                        <td className="py-2 text-right text-blue-300">{log.clicks || '0'}</td>
+                                        <td className="py-2 text-right text-purple-400">{log.imps || '0'}</td>
                                         <td className="py-2 pl-4 text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
                                     </tr>
                                 ))}
@@ -444,6 +454,7 @@
             );
         }
 
+        // 8. ClientCard
         function ClientCard({ client }) {
             const [open, setOpen] = useState(false);
             
@@ -458,6 +469,7 @@
             const prevCpa = kpi.prev > 0 ? client.prev.total / kpi.prev : 0;
             const cpaTrend = calcTrend(cpa, prevCpa);
             
+            // Total CTR
             const totalImps = (client.gImps || 0) + (client.fImps || 0);
             const totalClicks = (client.gClicks || 0) + (client.fClicks || 0);
             const ctr = totalImps > 0 ? (totalClicks / totalImps) * 100 : 0;
@@ -467,6 +479,7 @@
             const prevCtr = prevImps > 0 ? (prevClicks / prevImps) * 100 : 0;
             const ctrTrend = calcTrend(ctr, prevCtr);
 
+            // Platform Specifics
             const gVal = client.name.includes('Nursing') ? client.gNurse : client.gCare + client.gSupport;
             const fVal = client.name.includes('Nursing') ? client.fNurse : client.fCare + client.fSupport;
 
@@ -525,7 +538,7 @@
             );
         }
 
-        // 9. Dashboard (Main Logic)
+        // 9. Dashboard
         function Dashboard() {
             const [data, setData] = useState([]);
             const [loading, setLoading] = useState(false);
@@ -604,11 +617,15 @@
                                 const json = await res.json();
                                 if (json.values) {
                                     cache[tabName] = json.values;
+                                    
+                                    // FRESHNESS CHECK
                                     let latest = 0;
-                                    for(let i=1; i<json.values.length; i++) {
+                                    const limit = Math.max(1, json.values.length - 100);
+                                    for(let i=json.values.length-1; i>=limit; i--) {
                                         const d = parseSheetDate(json.values[i][0]);
                                         if (d && d.getTime() > latest) latest = d.getTime();
                                     }
+                                    
                                     if (latest > 0) {
                                         const now = new Date();
                                         if ((now.getTime() - latest) / (1000 * 60 * 60 * 24) > 1.5) {
@@ -708,6 +725,7 @@
                                         tempLogs.push({
                                             client: client.name, tab: tabName, platform: isFbRow ? 'FB' : 'Google', date: d.Date.toLocaleDateString('en-GB'),
                                             camp: d.Campaign || d.Adset, spend: d.Cost, careApps: d.CareApps, rawCare: d.RawCare, clicks: d.Clicks, imps: d.Impressions,
+                                            debugCols: `C:${d.clickCol} I:${d.impCol}`, // Added Debug info
                                             note: isConv ? 'Conv Tab' : d.RawCare > 50 ? 'High Val Ignored' : 'Matched'
                                         });
                                     }
