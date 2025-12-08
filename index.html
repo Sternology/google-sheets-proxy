@@ -25,7 +25,7 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
-        // --- HELPERS ---
+        // --- 1. HELPERS ---
         function formatMoney(val) {
             return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(val || 0);
         }
@@ -50,7 +50,7 @@
             return isNaN(d.getTime()) ? null : d;
         }
 
-        // --- ROW MAPPER ---
+        // --- 2. ROW MAPPER ---
         function mapRow(headers, row) {
             const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', Clicks: 0, Impressions: 0 };
             
@@ -69,13 +69,9 @@
                 adset: findIdx(['adset name']),
                 cost: findIdx(['amount spent (gbp)', 'cost']),
                 budget: findIdx(['adset daily budget', 'budget amount']),
-                
-                // METRICS: Look for "Link clicks" (FB) or "Clicks" (Google)
-                // Since you removed CTR columns, we don't need to worry about exclusion as much
+                // Priority: "Link clicks" (FB), then "Clicks" (Google). Ignore CTR columns.
                 clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'rate', 'unique']), 
                 impressions: findIdx(['impressions', 'impr.']),
-                
-                // Conversions
                 care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
                 nurse: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('nurse') || h.includes('nursing'))),
                 support: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('support'))),
@@ -91,24 +87,19 @@
                 return isNaN(n) ? 0 : n;
             };
 
-            // Spend (Pence Check)
             const rawCost = getNum(idx.cost);
             const isFbSpend = idx.cost > -1 && hNorm[idx.cost].includes('amount spent');
             if (isFbSpend && rawCost > 500) obj.Cost = rawCost / 100;
             else obj.Cost = rawCost;
 
-            // Budget
             const rawBudget = getNum(idx.budget);
             const isFbBudget = idx.budget > -1 && hNorm[idx.budget].includes('adset');
-            // If FB Budget > 50, assume Pence (e.g. 100 = £1.00)
             if (isFbBudget && rawBudget > 50) obj.DailyBudget = rawBudget / 100;
             else obj.DailyBudget = rawBudget;
 
-            // Metrics (Calculated safely)
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.impressions);
 
-            // Conversions (Anti-Inflation)
             const getConv = (i) => {
                 const n = getNum(i);
                 return n < 50 ? n : 0; 
@@ -120,7 +111,7 @@
             return obj;
         }
 
-        // --- COMPONENTS ---
+        // --- 3. UI COMPONENTS ---
 
         function Gauge({ pct, label, sub, color, detail }) {
             const r = 40, c = 2 * Math.PI * r;
@@ -298,9 +289,9 @@
                     </div>
                 </div>
             );
-        };
+        }
 
-        const BudgetAction = ({ client }) => {
+        function BudgetAction({ client }) {
             const [open, setOpen] = useState(false);
 
             if (client.isHistorical) {
@@ -383,7 +374,76 @@
             );
         }
 
-        // 5. ClientCard
+        function MonthSelector({ selectedMonth, onMonthChange, availableMonths }) {
+            return (
+                <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                    <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
+                    <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
+                        {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                </div>
+            );
+        }
+
+        function StaleDataAlert({ staleTabs }) {
+            if (!staleTabs || staleTabs.length === 0) return null;
+            return (
+                <div className="mb-6 bg-red-900/30 border border-red-500/50 rounded-xl p-4 flex items-start gap-3 animate-pulse text-white">
+                    <span className="text-2xl">⚠️</span>
+                    <div>
+                        <div className="text-red-400 font-bold text-sm uppercase tracking-wide mb-1">Data Freshness Warning</div>
+                        <div className="text-red-100 text-sm">The following tabs have not updated with data for today:</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            {staleTabs.map(tab => (
+                                <span key={tab.name} className="bg-red-900 text-red-200 px-2 py-1 rounded text-xs border border-red-700">{tab.name} ({tab.date})</span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function DebugPanel({ logs }) {
+            if (!logs || logs.length === 0) return null;
+            return (
+                <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
+                    <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-600 pb-2">Debug Analysis Log</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="text-slate-500">
+                                    <th className="pb-2">Client</th>
+                                    <th className="pb-2">Date</th>
+                                    <th className="pb-2">Source</th>
+                                    <th className="pb-2 text-right">Spend</th>
+                                    <th className="pb-2 text-right text-blue-400">Clicks</th>
+                                    <th className="pb-2 text-right text-purple-400">Imps</th>
+                                    <th className="pb-2 text-right text-orange-400">CTR (Calc)</th>
+                                    <th className="pb-2 pl-4">Apps</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                                {logs.map((log, i) => (
+                                    <tr key={i} className="hover:bg-slate-700">
+                                        <td className="py-2 text-blue-400">{log.client}</td>
+                                        <td className="py-2">{log.date}</td>
+                                        <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
+                                        <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
+                                        <td className="py-2 text-right text-blue-300">{log.clicks || '-'}</td>
+                                        <td className="py-2 text-right text-purple-400">{log.imps || '-'}</td>
+                                        <td className="py-2 text-right text-orange-400 font-bold">
+                                            {(log.clicks > 0 && log.imps > 0) ? `${((log.clicks/log.imps)*100).toFixed(2)}%` : '-'}
+                                        </td>
+                                        <td className="py-2 pl-4 text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
         function ClientCard({ client }) {
             const [open, setOpen] = useState(false);
             
@@ -398,7 +458,6 @@
             const prevCpa = kpi.prev > 0 ? client.prev.total / kpi.prev : 0;
             const cpaTrend = calcTrend(cpa, prevCpa);
             
-            // Total CTR
             const totalImps = (client.gImps || 0) + (client.fImps || 0);
             const totalClicks = (client.gClicks || 0) + (client.fClicks || 0);
             const ctr = totalImps > 0 ? (totalClicks / totalImps) * 100 : 0;
@@ -408,7 +467,6 @@
             const prevCtr = prevImps > 0 ? (prevClicks / prevImps) * 100 : 0;
             const ctrTrend = calcTrend(ctr, prevCtr);
 
-            // Platform Specifics
             const gVal = client.name.includes('Nursing') ? client.gNurse : client.gCare + client.gSupport;
             const fVal = client.name.includes('Nursing') ? client.fNurse : client.fCare + client.fSupport;
 
@@ -467,7 +525,7 @@
             );
         }
 
-        // 9. Dashboard
+        // 9. Dashboard (Main Logic)
         function Dashboard() {
             const [data, setData] = useState([]);
             const [loading, setLoading] = useState(false);
@@ -541,20 +599,16 @@
                                 
                                 const range = (prefix + ' ' + suffix).includes('FB') ? `${tabName}!A:H` : `${tabName}!A:F`;
                                 const res = await fetch(`${PROXY}?spreadsheetId=${SHEET}&range=${encodeURIComponent(range)}&apiKey=${KEY}`);
-                                if (res.status === 400 || res.status === 500) return;
+                                if (res.status === 400 || res.status === 500) return; // Ignore missing tabs
                                 if (!res.ok) throw new Error(res.status);
                                 const json = await res.json();
                                 if (json.values) {
                                     cache[tabName] = json.values;
-                                    
-                                    // FRESHNESS CHECK
                                     let latest = 0;
-                                    const limit = Math.max(1, json.values.length - 100);
-                                    for(let i=json.values.length-1; i>=limit; i--) {
+                                    for(let i=1; i<json.values.length; i++) {
                                         const d = parseSheetDate(json.values[i][0]);
                                         if (d && d.getTime() > latest) latest = d.getTime();
                                     }
-                                    
                                     if (latest > 0) {
                                         const now = new Date();
                                         if ((now.getTime() - latest) / (1000 * 60 * 60 * 24) > 1.5) {
@@ -668,7 +722,6 @@
                                             target.care += (d.CareApps || 0); target.nurse += (d.NurseApps || 0);
                                         } else {
                                             day.cost += (d.Cost || 0);
-                                            // Daily CTR using Clicks/Imps
                                             if (d.Clicks > 0 && d.Impressions > 0) {
                                                 day.ctrSum += d.Clicks;
                                                 day.ctrCount += d.Impressions;
@@ -708,11 +761,15 @@
                                 if (d.DailyBudget > 0 && !isConv) {
                                     const t = d.Date.getTime();
                                     if (isFbRow) {
-                                        if (t > maxDateF) { maxDateF = t; fBudgets.clear(); }
-                                        if (t === maxDateF) fBudgets.set(normalize(d.Adset)||'def', d.DailyBudget);
+                                        if (t > (fBudgets.get(normalize(d.Adset) + '_time') || 0)) {
+                                            fBudgets.set(normalize(d.Adset), d.DailyBudget);
+                                            fBudgets.set(normalize(d.Adset) + '_time', t);
+                                        }
                                     } else {
-                                        if (t > maxDateG) { maxDateG = t; gBudgets.clear(); }
-                                        if (t === maxDateG) gBudgets.set(normalize(d.Campaign)||'def', d.DailyBudget);
+                                        if (t > (gBudgets.get(normalize(d.Campaign) + '_time') || 0)) {
+                                            gBudgets.set(normalize(d.Campaign), d.DailyBudget);
+                                            gBudgets.set(normalize(d.Campaign) + '_time', t);
+                                        }
                                     }
                                 }
                             });
@@ -731,8 +788,8 @@
                         }));
 
                         let gDaily = 0, fDaily = 0;
-                        gBudgets.forEach(v => gDaily += v);
-                        fBudgets.forEach(v => fDaily += v);
+                        for (const [k, v] of gBudgets) { if (!k.endsWith('_time')) gDaily += v; }
+                        for (const [k, v] of fBudgets) { if (!k.endsWith('_time')) fDaily += v; }
 
                         const today = currentRef;
                         const daysTotal = Math.ceil((dates.end - dates.start) / 86400000);
@@ -750,7 +807,6 @@
 
                         prev.conversions = prev.careConversions + prev.nursingConversions + prev.supportConversions;
                         prev.cpa = prev.conversions > 0 ? prev.total / prev.conversions : 0;
-                        // PREV CTR = (Total Clicks / Total Imps) * 100
                         prev.ctr = prev.imps > 0 ? (prev.clicks / prev.imps) * 100 : 0;
 
                         return {
