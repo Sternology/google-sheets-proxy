@@ -52,11 +52,7 @@
 
         // --- 2. ROW MAPPER ---
         function mapRow(headers, row) {
-            const obj = { 
-                Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, 
-                Adset: '', Campaign: '', Clicks: 0, Impressions: 0,
-                clickCol: null, impCol: null
-            };
+            const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', Clicks: 0, Impressions: 0, clickCol: null, impCol: null };
             
             const hNorm = headers.map(h => (h || '').trim().toLowerCase());
 
@@ -73,10 +69,9 @@
                 adset: findIdx(['adset name']),
                 cost: findIdx(['amount spent (gbp)', 'cost']),
                 budget: findIdx(['adset daily budget', 'budget amount']),
-                // Metrics
+                // Priority: "Link clicks" (FB), then "Clicks" (Google)
                 clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'rate', 'unique']), 
                 impressions: findIdx(['impressions', 'impr.']),
-                // Conversions
                 care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
                 nurse: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('nurse') || h.includes('nursing'))),
                 support: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('support'))),
