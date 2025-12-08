@@ -69,6 +69,7 @@
                 adset: findIdx(['adset name']),
                 cost: findIdx(['amount spent (gbp)', 'cost']),
                 budget: findIdx(['adset daily budget', 'budget amount']),
+                // Expanded range means we can safely find these now
                 clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'rate', 'unique']), 
                 impressions: findIdx(['impressions', 'impr.']),
                 care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
@@ -608,10 +609,10 @@
                                 if (json.values) {
                                     cache[tabName] = json.values;
                                     
-                                    // FRESHNESS CHECK
+                                    // REFINED FRESHNESS CHECK: Look at entire column for max date (Handle Unsorted)
                                     let latest = 0;
                                     const limit = Math.max(1, json.values.length - 100);
-                                    for(let i=json.values.length-1; i>=limit; i--) {
+                                    for(let i=json.values.length-1; i>=0; i--) {
                                         const d = parseSheetDate(json.values[i][0]);
                                         if (d && d.getTime() > latest) latest = d.getTime();
                                     }
@@ -890,7 +891,7 @@
                     {debug && <DebugPanel logs={debugLogs} />}
                 </div>
             );
-        };
+        }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<Dashboard />);
