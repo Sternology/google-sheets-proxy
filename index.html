@@ -52,12 +52,7 @@
 
         // --- 2. ROW MAPPER ---
         function mapRow(headers, row) {
-            const obj = { 
-                Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, 
-                Adset: '', Campaign: '', Clicks: 0, Impressions: 0, 
-                // Debug fields
-                clickCol: null, impCol: null 
-            };
+            const obj = { Date: null, Cost: 0, DailyBudget: 0, CareApps: 0, NurseApps: 0, SupportApps: 0, Adset: '', Campaign: '', Clicks: 0, Impressions: 0 };
             
             const hNorm = headers.map(h => (h || '').trim().toLowerCase());
 
@@ -74,7 +69,6 @@
                 adset: findIdx(['adset name']),
                 cost: findIdx(['amount spent (gbp)', 'cost']),
                 budget: findIdx(['adset daily budget', 'budget amount']),
-                // Metrics - Priority
                 clicks: findIdx(['link clicks', 'clicks'], ['ctr', 'rate', 'unique']), 
                 impressions: findIdx(['impressions', 'impr.']),
                 care: hNorm.findIndex(h => (h.includes('conversion') || h.includes('application')) && (h.includes('care') || h.includes('hca'))),
@@ -104,10 +98,6 @@
 
             obj.Clicks = getNum(idx.clicks);
             obj.Impressions = getNum(idx.impressions);
-
-            // Capture Debug Info
-            if (idx.clicks > -1) obj.clickCol = headers[idx.clicks];
-            if (idx.impressions > -1) obj.impCol = headers[idx.impressions];
 
             const getConv = (i) => {
                 const n = getNum(i);
@@ -300,7 +290,7 @@
             );
         };
 
-        function BudgetAction({ client }) {
+        const BudgetAction = ({ client }) => {
             const [open, setOpen] = useState(false);
 
             if (client.isHistorical) {
@@ -381,22 +371,20 @@
                     </div>
                 </div>
             );
-        }
+        };
 
         // 5. MonthSelector
-        function MonthSelector({ selectedMonth, onMonthChange, availableMonths }) {
-            return (
-                <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                    <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
-                    <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
-                        {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                    </select>
-                </div>
-            );
-        }
+        const MonthSelector = ({ selectedMonth, onMonthChange, availableMonths }) => (
+            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                <label className="text-sm font-bold text-gray-600 pl-2">Period:</label>
+                <select value={selectedMonth} onChange={(e) => onMonthChange(e.target.value)} className="bg-transparent text-sm font-medium text-gray-800 outline-none cursor-pointer pr-8">
+                    {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+            </div>
+        );
 
         // 6. StaleDataAlert
-        function StaleDataAlert({ staleTabs }) {
+        const StaleDataAlert = ({ staleTabs }) => {
             if (!staleTabs || staleTabs.length === 0) return null;
             return (
                 <div className="mb-6 bg-red-900/30 border border-red-500/50 rounded-xl p-4 flex items-start gap-3 animate-pulse text-white">
@@ -412,10 +400,10 @@
                     </div>
                 </div>
             );
-        }
+        };
 
         // 7. DebugPanel
-        function DebugPanel({ logs }) {
+        const DebugPanel = ({ logs }) => {
             if (!logs || logs.length === 0) return null;
             return (
                 <div className="mt-8 bg-slate-900 text-slate-200 p-6 rounded-xl overflow-hidden font-mono text-xs shadow-2xl border border-slate-700">
@@ -427,10 +415,10 @@
                                     <th className="pb-2">Client</th>
                                     <th className="pb-2">Date</th>
                                     <th className="pb-2">Source</th>
-                                    <th className="pb-2">Cols Found</th>
                                     <th className="pb-2 text-right">Spend</th>
                                     <th className="pb-2 text-right text-blue-400">Clicks</th>
                                     <th className="pb-2 text-right text-purple-400">Imps</th>
+                                    <th className="pb-2 text-right text-orange-400">CTR (Calc)</th>
                                     <th className="pb-2 pl-4">Apps</th>
                                 </tr>
                             </thead>
@@ -440,10 +428,12 @@
                                         <td className="py-2 text-blue-400">{log.client}</td>
                                         <td className="py-2">{log.date}</td>
                                         <td className="py-2 opacity-80 truncate max-w-[200px]" title={log.camp}>{log.camp}</td>
-                                        <td className="py-2 text-[10px] text-gray-500">{log.debugCols}</td>
                                         <td className="py-2 text-right text-emerald-400">{log.spend > 0 ? `£${log.spend.toFixed(2)}` : '-'}</td>
                                         <td className="py-2 text-right text-blue-300">{log.clicks || '0'}</td>
                                         <td className="py-2 text-right text-purple-400">{log.imps || '0'}</td>
+                                        <td className="py-2 text-right text-orange-400 font-bold">
+                                            {(log.clicks > 0 && log.imps > 0) ? `${((log.clicks/log.imps)*100).toFixed(2)}%` : '-'}
+                                        </td>
                                         <td className="py-2 pl-4 text-white">{log.careApps > 0 ? log.careApps : '-'}</td>
                                     </tr>
                                 ))}
@@ -452,10 +442,10 @@
                     </div>
                 </div>
             );
-        }
+        };
 
         // 8. ClientCard
-        function ClientCard({ client }) {
+        const ClientCard = ({ client }) => {
             const [open, setOpen] = useState(false);
             
             let kpi = { lbl: 'Conversions', val: client.conversions || 0, icon: '🎯', prev: client.prev.conversions || 0 };
@@ -536,10 +526,10 @@
                     </div>
                 </div>
             );
-        }
+        };
 
         // 9. Dashboard
-        function Dashboard() {
+        const Dashboard = () => {
             const [data, setData] = useState([]);
             const [loading, setLoading] = useState(false);
             const [month, setMonth] = useState('current');
@@ -725,7 +715,6 @@
                                         tempLogs.push({
                                             client: client.name, tab: tabName, platform: isFbRow ? 'FB' : 'Google', date: d.Date.toLocaleDateString('en-GB'),
                                             camp: d.Campaign || d.Adset, spend: d.Cost, careApps: d.CareApps, rawCare: d.RawCare, clicks: d.Clicks, imps: d.Impressions,
-                                            debugCols: `C:${d.clickCol} I:${d.impCol}`, // Added Debug info
                                             note: isConv ? 'Conv Tab' : d.RawCare > 50 ? 'High Val Ignored' : 'Matched'
                                         });
                                     }
@@ -901,7 +890,7 @@
                     {debug && <DebugPanel logs={debugLogs} />}
                 </div>
             );
-        }
+        };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<Dashboard />);
